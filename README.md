@@ -7,6 +7,8 @@
 
 Supported instruments: **MNQ / NQ, MES / ES, MGC / GC, CL** (micro and full-size Nasdaq, S&P, Gold, and Crude futures).
 
+![KAIROS dashboard in action](assets/dashboard.png)
+
 > **Note on the included Pine script:** `kairos.pine` in this repository is a public reference version — it detects IFVGs and fires entry alerts. The advanced signal-side features (swing-stop placement, structural invalidation exit alerts, A+ setup detection against higher-timeframe FVG draws) are not included. Those alert fields are optional, so the bot works with this script as-is and falls back to its own stop/target logic.
 
 ---
@@ -79,6 +81,18 @@ Or directly: `./venv/bin/python main.py`. The bot listens on `127.0.0.1:8000`:
 
 To expose it publicly, set up a Cloudflare Tunnel mapping `https://app.<your-domain>` → `127.0.0.1:8000`. For an always-on cloud deployment (Oracle Always-Free VM, systemd units included), see [`deploy/DEPLOY_ORACLE.md`](deploy/DEPLOY_ORACLE.md) and [`deploy/DEPLOY_LANDING.md`](deploy/DEPLOY_LANDING.md).
 
+## Dashboard settings
+
+The dashboard (`/dashboard?token=<DASHBOARD_TOKEN>`) is the bot's live control panel. Every change takes effect immediately and persists across restarts. The cards:
+
+- **Account** — switch the active broker account on the fly (practice / eval / funded); shows account size, current contract sizing, session stats, and the active stop/TP scheme.
+- **Trade Settings** — choose the stop mode (Structural or Swing), set take-profit as a multiple of the stop or as flat points per instrument group, enable auto break-even (stop → entry at 50% of TP), and restrict entries to the macro window only.
+- **Instruments** — tick each instrument on/off (micro MNQ · MES · MGC or mini NQ · ES · GC · CL) and click to cycle a per-symbol direction bias (long / short / both).
+- **Filters & Risk** — per-group Minimum FVG size (ticks) and Maximum Stop cap; configure the 1-minute session window (5m signals always trade, A+ any time) and the macro-window width (± minutes around each hour).
+- **A+ Setups** — master switch for A+ trades, fallback take-profit distances used when the alert carries no HTF FVG level, and a max-A+-per-session risk guard.
+- **Presets** — snapshot the entire current configuration as a named preset; apply or delete presets in one click.
+- **Testing** — fire simulated buy/sell signals and test notifications without touching the market, plus the live trade log, activity feed, and closed-trade results table.
+
 ## TradingView alert setup
 
 Alerts flow: **TradingView chart → alert() → your webhook URL → bot**.
@@ -112,6 +126,18 @@ deploy/            systemd units + cloud/tunnel deployment guides
 Analytics/         Trade-analytics dashboard generator (reads results.txt)
 .env.example       Template for your .env
 ```
+
+## Like KAIROS? There's more.
+
+This repo is the free, self-hosted core — and it always will be. The full KAIROS experience lives at **[OnlyRules](https://onlyrules.online)**, the rule-based trading community it was built inside:
+
+- **IFVG Pro** — the full private signal engine: swing-stop placement, structural invalidation exits, and A+ setup detection against higher-timeframe FVG draws.
+- **Custom bot builds** — 1-on-1 with the builder: your risk rules, your position sizing, your instruments.
+- **The community** — rule-based traders holding each other to their own rules.
+
+Setups come and go. Edges decay. Discipline compounds. **Markets change — OnlyRules survive.**
+
+→ [onlyrules.online](https://onlyrules.online) · [kairosnow.online](https://kairosnow.online)
 
 ## ⚠️ Disclaimer
 
