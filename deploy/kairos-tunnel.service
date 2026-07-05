@@ -1,0 +1,23 @@
+# Cloudflare named tunnel for KAIROS — keeps https://app.your-domain.example pointing
+# at this server's 127.0.0.1:8000 (the bot's control/webhook origin). The PUBLIC
+# landing page (your-domain.example + www) is served by Cloudflare Pages, not this
+# tunnel, so it stays up regardless of the bot.
+# Install:  sudo cp kairos-tunnel.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now kairos-tunnel
+# Reads ~/.cloudflared/config.yml (tunnel id + ingress) copied from the Mac.
+# NOTE: Ubuntu user `ubuntu` assumed; on Oracle Linux replace ubuntu→opc.
+[Unit]
+Description=Cloudflare tunnel for KAIROS (app.your-domain.example)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+ExecStart=/usr/bin/cloudflared tunnel --config /home/ubuntu/.cloudflared/config.yml run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

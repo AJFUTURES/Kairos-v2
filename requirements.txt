@@ -1,0 +1,11 @@
+# KAIROS runtime dependencies — the only packages main.py imports directly.
+# The heavy stuff in the old laptop venv (matplotlib/numpy/pillow/contourpy/...)
+# is unused leftover cruft and is intentionally omitted so the install stays
+# light and fast on a 1 GB Always-Free VM. pip resolves the transitive deps
+# (starlette, pydantic, anyio, h11, httpcore, idna, sniffio, click, ...).
+fastapi==0.136.3
+uvicorn==0.48.0
+httpx==0.28.1
+websockets==16.0
+python-dotenv==1.2.2
+certifi==2026.5.20

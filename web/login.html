@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KAIROS — access</title>
+<meta name="description" content="KAIROS control access.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/favicon.png">
+<style>
+  :root{
+    --font-ui:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    --font-mono:'JetBrains Mono','SF Mono',ui-monospace,Menlo,monospace;
+    --bg:#0a0a0b; --bg1:#0e0e10; --bg2:#151517; --bg3:#1c1c20;
+    --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.12);
+    --text:#f4f4f6; --dim:#9a9aa1; --faint:#65656c; --ghost:#3a3a40;
+    /* monochrome base, with a single slight-neon accent for danger (errors) */
+    --neon-red:#ff6b78; --glow-red:rgba(255,93,108,.5);
+    --err:var(--neon-red);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:var(--font-ui); font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased; letter-spacing:.005em;
+    background-image:radial-gradient(900px 500px at 50% -14%,rgba(255,255,255,.045),transparent 70%);
+    background-attachment:fixed; min-height:100vh;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  ::selection{background:rgba(255,255,255,.18)}
+
+  .card{width:100%;max-width:360px;display:flex;flex-direction:column;align-items:center;gap:22px;text-align:center}
+
+  .brand{display:flex;flex-direction:column;align-items:center;gap:13px;text-decoration:none}
+  .mark{
+    width:48px;height:48px;border-radius:12px;overflow:hidden;background:#000;
+    border:1px solid var(--line-2);box-shadow:0 12px 30px -14px rgba(0,0,0,.9);
+  }
+  .mark img{width:100%;height:100%;object-fit:contain;display:block;transform:scale(1.05)}
+  .word{font-weight:700;font-size:22px;letter-spacing:.24em;text-indent:.24em;color:var(--text)}
+  .sub{
+    font-family:var(--font-mono);font-size:10.5px;letter-spacing:.36em;text-indent:.36em;
+    text-transform:uppercase;color:var(--faint);
+  }
+
+  form{width:100%;display:flex;flex-direction:column;gap:11px;margin:0}
+  .lbl{
+    font-family:var(--font-mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--faint);text-align:left;
+  }
+  input{
+    width:100%;font-family:var(--font-mono);font-size:13px;color:var(--text);
+    background:var(--bg1);border:1px solid var(--line-2);border-radius:11px;
+    padding:12px 14px;outline:none;letter-spacing:.08em;
+    transition:border-color .16s ease,background .16s ease,box-shadow .16s ease;
+  }
+  input:focus{border-color:var(--line-2);background:var(--bg2);box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+  input::placeholder{color:var(--ghost);letter-spacing:.18em}
+  button{
+    width:100%;font-family:var(--font-ui);font-weight:600;font-size:13.5px;color:var(--text);
+    background:var(--bg2);border:1px solid var(--line-2);border-radius:11px;
+    padding:12px 14px;cursor:pointer;margin-top:2px;
+    transition:background .16s ease,transform .12s ease,border-color .16s ease;
+  }
+  button:hover{background:var(--bg3);transform:translateY(-1px);border-color:rgba(255,255,255,.2)}
+  button:active{transform:translateY(0)}
+  .err{
+    font-family:var(--font-mono);font-size:11px;letter-spacing:.03em;color:var(--err);
+    min-height:15px;margin:0;text-align:left;
+  }
+  .err:not(:empty){text-shadow:0 0 7px var(--glow-red)}
+  .home{
+    font-family:var(--font-mono);font-size:10.5px;letter-spacing:.1em;color:var(--faint);
+    text-decoration:none;transition:color .16s ease;
+  }
+  .home:hover{color:var(--dim)}
+  :focus-visible{outline:2px solid var(--line-2);outline-offset:2px}
+</style>
+</head>
+<body data-denied="__DENIED__">
+  <main class="card">
+    <a class="brand" href="/" aria-label="KAIROS — home">
+      <span class="mark"><img src="/logo.png" alt=""></span>
+      <span class="word">KAIROS</span>
+    </a>
+    <div class="sub">control access</div>
+
+    <form id="f" autocomplete="off" novalidate>
+      <label class="lbl" for="tok">Access token</label>
+      <input id="tok" name="tok" type="password" placeholder="enter token"
+             autocomplete="off" spellcheck="false" autocapitalize="off" autofocus>
+      <p class="err" id="err" role="alert" aria-live="polite"></p>
+      <button type="submit">Enter dashboard</button>
+    </form>
+
+    <a class="home" href="https://your-domain.example">&larr; back to your-domain.example</a>
+  </main>
+<script>
+(function(){
+  var b = document.body,
+      f = document.getElementById('f'),
+      i = document.getElementById('tok'),
+      e = document.getElementById('err');
+  // Server flags a failed attempt (a token was supplied but rejected) by setting
+  // data-denied="1". A clean first visit shows the bare form, no scary banner.
+  if(b.getAttribute('data-denied') === '1'){
+    e.textContent = 'Incorrect token — try again.';
+    if(i.select){ i.focus(); i.select(); }
+  }
+  f.addEventListener('submit', function(ev){
+    ev.preventDefault();
+    var v = i.value.trim();
+    if(!v){ e.textContent = 'Enter your access token.'; i.focus(); return; }
+    e.textContent = '';
+    // Carry the token to /dashboard once; the server moves it into an HttpOnly
+    // cookie and the dashboard scrubs it from the URL.
+    window.location.href = '/dashboard?token=' + encodeURIComponent(v);
+  });
+})();
+</script>
+</body>
+</html>

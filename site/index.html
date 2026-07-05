@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KAIROS — the right moment</title>
+<meta name="description" content="KAIROS — an autonomous futures bot that waits for one thing: an inversion Fair Value Gap, then executes.">
+<meta name="theme-color" content="#0a0a0b">
+<meta property="og:title" content="KAIROS — the right moment">
+<meta property="og:description" content="An autonomous futures bot built around a single idea: the inversion Fair Value Gap.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/favicon.png">
+<style>
+  :root{
+    --font-ui:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    --font-mono:'JetBrains Mono','SF Mono',ui-monospace,Menlo,monospace;
+    --bg:#0a0a0b; --bg1:#0e0e10; --bg2:#151517; --bg3:#1c1c20;
+    --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.12); --line-3:rgba(255,255,255,.18);
+    --text:#f4f4f6; --dim:#9a9aa1; --faint:#65656c; --ghost:#3a3a40;
+    /* KAIROS is strictly black & white — the only "accent" is bright white.
+       (OnlyRules carries the cyan; KAIROS stays monochrome.) */
+    --hot:#f4f4f6;
+    --r-md:11px; --r-lg:14px; --nav-h:58px;
+    /* matrix backdrop — single knob to dial intensity up/down (0 = off) */
+    --matrix-opacity:.2;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:var(--font-ui); font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased; letter-spacing:.005em;
+    background-image:radial-gradient(1000px 560px at 50% -12%,rgba(255,255,255,.045),transparent 70%);
+    background-attachment:fixed; min-height:100vh;
+  }
+  ::selection{background:rgba(255,255,255,.18)}
+  .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+  /* matrix digital-rain backdrop — sits behind everything, monochrome to
+     stay on brand. Transparent canvas (glyphs only) so the body's radial
+     vignette still reads through it. */
+  #matrix{
+    position:fixed; inset:0; width:100%; height:100%;
+    z-index:0; pointer-events:none; opacity:var(--matrix-opacity);
+  }
+
+  /* top navbar */
+  .nav{
+    position:fixed; top:0; left:0; right:0; z-index:50;
+    background:rgba(10,10,11,.78);
+    -webkit-backdrop-filter:blur(14px) saturate(140%);
+            backdrop-filter:blur(14px) saturate(140%);
+    border-bottom:1px solid var(--line);
+  }
+  .nav-inner{
+    max-width:900px; margin:0 auto; height:var(--nav-h);
+    display:flex; align-items:center; justify-content:space-between; gap:14px;
+    padding:0 22px;
+  }
+  .nav-brand{display:flex; align-items:center; gap:10px; text-decoration:none; flex:0 0 auto}
+  .nav-mark{
+    width:26px; height:26px; border-radius:7px; overflow:hidden; background:#000;
+    border:1px solid var(--line-2); flex:0 0 auto; box-shadow:0 0 0 1px rgba(0,0,0,.5);
+  }
+  .nav-mark img{width:100%;height:100%;object-fit:contain;display:block;transform:scale(1.05)}
+  .nav-word{font-weight:700; font-size:15px; letter-spacing:.22em; text-indent:.22em; color:var(--text)}
+  .nav-links{display:flex; align-items:center; gap:3px}
+  .nav-link{
+    font-family:var(--font-mono); font-size:11.5px; letter-spacing:.04em; white-space:nowrap;
+    color:var(--dim); text-decoration:none;
+    padding:7px 11px; border-radius:999px; border:1px solid transparent;
+    transition:color .16s ease,background .16s ease,border-color .16s ease,transform .16s ease;
+  }
+  .nav-link:hover{
+    color:var(--text); background:var(--bg2); border-color:var(--line-2); transform:translateY(-1px);
+  }
+  .nav-cta{color:var(--text); background:var(--bg2); border-color:var(--line-2)}
+  .nav-cta:hover{background:var(--bg3); border-color:var(--line-3)}
+  .nav-toggle{
+    display:none; flex-direction:column; justify-content:center; gap:4px;
+    width:36px; height:36px; flex:0 0 auto;
+    background:transparent; border:1px solid var(--line-2); border-radius:9px; cursor:pointer;
+  }
+  .nav-toggle span{
+    display:block; width:16px; height:1.5px; margin:0 auto; background:var(--text); border-radius:2px;
+    transition:transform .2s ease,opacity .15s ease;
+  }
+  .nav-toggle[aria-expanded="true"] span:nth-child(1){transform:translateY(5.5px) rotate(45deg)}
+  .nav-toggle[aria-expanded="true"] span:nth-child(2){opacity:0}
+  .nav-toggle[aria-expanded="true"] span:nth-child(3){transform:translateY(-5.5px) rotate(-45deg)}
+  .nav a:focus-visible, .nav button:focus-visible{outline:2px solid var(--line-3); outline-offset:2px}
+  #how, #strategy{scroll-margin-top:calc(var(--nav-h) + 16px)}
+
+  @media (max-width:640px){
+    .nav-toggle{display:flex}
+    .nav-links{
+      position:absolute; top:var(--nav-h); left:0; right:0;
+      flex-direction:column; align-items:stretch; gap:2px;
+      background:rgba(10,10,11,.96);
+      -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+      border-bottom:1px solid var(--line); padding:10px 16px 16px; display:none;
+    }
+    .nav-links.open{display:flex}
+    .nav-link{padding:11px 12px; border-radius:9px; font-size:12px}
+    .nav-link:hover{transform:none}
+    .nav-cta{text-align:center; margin-top:4px}
+  }
+
+  .wrap{
+    position:relative; z-index:1;
+    min-height:100vh; display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:calc(var(--nav-h) + 42px) 22px 64px; gap:50px; text-align:center;
+  }
+  .stack{display:flex;flex-direction:column;align-items:center;gap:50px;width:100%;max-width:680px}
+
+  /* brand */
+  .brand{display:flex;flex-direction:column;align-items:center;gap:25px}
+  .mark{
+    width:58px;height:58px;border-radius:14px;overflow:hidden;background:#000;
+    border:1px solid var(--line-2);
+    box-shadow:0 0 0 1px rgba(0,0,0,.5),0 12px 30px -14px rgba(0,0,0,.9);
+  }
+  .mark img{width:100%;height:100%;object-fit:contain;display:block;transform:scale(1.05)}
+  .wordmark{
+    font-weight:700; font-size:clamp(40px,9vw,68px); line-height:.95;
+    letter-spacing:.2em; text-indent:.2em; margin:0;
+    background:linear-gradient(180deg,#ffffff,#b6b6bd);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .tagline{
+    font-family:var(--font-mono); font-size:11px; letter-spacing:.42em;
+    text-indent:.42em; text-transform:uppercase; color:var(--faint); margin-top:4px;
+  }
+
+  .lede{
+    font-size:clamp(16px,2.4vw,19px); line-height:1.55; color:var(--dim);
+    max-width:540px; margin:0; font-weight:400;
+  }
+  .lede b{color:var(--text);font-weight:600}
+
+  /* chart */
+  .chart{
+    width:100%; max-width:600px; background:var(--bg1);
+    border:1px solid var(--line); border-radius:var(--r-lg);
+    padding:16px 16px 12px; box-shadow:0 24px 60px -34px rgba(0,0,0,.9);
+  }
+  .chart canvas{width:100%;height:300px;display:block}
+  .chart-cap{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    font-family:var(--font-mono);font-size:10.5px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--faint);margin-top:8px;
+  }
+  .chart-cap .sw{width:18px;height:0;border-top:2px dashed var(--hot);opacity:.55}
+
+  .concept{font-size:14.5px;line-height:1.6;color:var(--dim);max-width:560px;margin:0}
+  .concept b{color:var(--text);font-weight:600}
+
+  /* capability strip */
+  .caps{display:flex;flex-direction:column;align-items:center;gap:17px;width:100%;max-width:100%;min-width:0}
+  .row{display:flex;flex-wrap:wrap;gap:7px;justify-content:center}
+  .chip{
+    font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;
+    color:var(--dim);background:var(--bg2);border:1px solid var(--line);
+    border-radius:999px;padding:5px 11px;cursor:default;
+    transition:color .16s ease,background .16s ease,border-color .16s ease,transform .16s ease;
+  }
+  .row .chip:hover{
+    color:var(--text);background:var(--bg3);border-color:var(--line-3);
+    transform:translateY(-1px);box-shadow:0 6px 16px -10px rgba(0,0,0,.8);
+  }
+  .chip.more{color:var(--faint);background:transparent;border-style:dashed}
+  .row .chip.more:hover{color:var(--dim);border-color:var(--line-2)}
+
+  /* strategy-agnostic pitch */
+  .pitch{display:flex;flex-direction:column;align-items:center;gap:16px;max-width:560px}
+  .pitch-k{
+    font-family:var(--font-mono);font-size:10.5px;letter-spacing:.34em;text-indent:.34em;
+    text-transform:uppercase;color:var(--faint);
+  }
+  .pitch p{font-size:14.5px;line-height:1.6;color:var(--dim);margin:0}
+  .pitch p b{color:var(--text);font-weight:600}
+  .pitch-link{
+    margin-top:20px;
+    font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;color:var(--faint);
+    text-decoration:none;border-bottom:1px solid var(--line-2);padding-bottom:2px;
+    transition:color .16s ease,border-color .16s ease;
+  }
+  .pitch-link:hover{color:var(--text);border-color:var(--line-3)}
+
+  /* signal pipeline animation */
+  .pipe{display:flex;align-items:center;justify-content:center;width:100%;max-width:480px}
+  .pipe .node{
+    font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;white-space:nowrap;flex:0 0 auto;
+    color:var(--dim);background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:6px 12px;
+  }
+  .pipe .node.core{
+    color:var(--text);font-weight:600;background:var(--bg3);border-color:var(--line-2);
+    box-shadow:0 0 0 1px rgba(255,255,255,.04),0 8px 22px -12px rgba(0,0,0,.85);
+  }
+  .pipe .wire{position:relative;flex:1 1 auto;min-width:30px;height:1px;background:var(--line-2)}
+  .pipe .pulse{
+    position:absolute;top:50%;left:0;width:6px;height:6px;border-radius:50%;
+    background:var(--text);transform:translate(-50%,-50%);
+    box-shadow:0 0 9px 1px rgba(255,255,255,.55);animation:flow 2.4s linear infinite;
+  }
+  @keyframes flow{0%{left:0;opacity:0}12%{opacity:1}88%{opacity:1}100%{left:100%;opacity:0}}
+
+  /* feature ticker — scrolls right to left */
+  .ticker{
+    margin-top:22px;
+    width:100%;max-width:100%;min-width:0;overflow:hidden;
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 11%,#000 89%,transparent);
+            mask-image:linear-gradient(90deg,transparent,#000 11%,#000 89%,transparent);
+  }
+  .ticker .track{display:flex;width:max-content;animation:marquee 34s linear infinite}
+  .ticker:hover .track{animation-play-state:paused}
+  @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .tile{
+    display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;white-space:nowrap;margin-right:9px;
+    font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;color:var(--dim);
+    background:var(--bg1);border:1px solid var(--line);border-radius:10px;padding:8px 13px;
+  }
+  .tile::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--ghost);flex:0 0 auto}
+  .tile.hot::before{background:var(--hot);box-shadow:0 0 6px 0 rgba(244,244,246,.4)}
+
+  @media (prefers-reduced-motion: reduce){
+    .pipe .pulse{animation:none;left:50%;opacity:.7}
+    .ticker .track{animation:none;flex-wrap:wrap;justify-content:center;width:auto}
+    .tile.dup{display:none}
+  }
+
+  .foot{
+    display:flex;align-items:center;gap:9px;
+    font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;
+    color:var(--faint);text-transform:uppercase;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:#f4f4f6;
+       box-shadow:0 0 0 0 rgba(244,244,246,.5);animation:pulse 2.4s infinite}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(244,244,246,.4)}
+    70%{box-shadow:0 0 0 7px rgba(244,244,246,0)}
+    100%{box-shadow:0 0 0 0 rgba(244,244,246,0)}
+  }
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+
+  /* footer — mirrors the OnlyRules footer pattern so the two sites bookend
+     consistently (shared nav at the top, cross-linked footer at the bottom). */
+  .site-foot{position:relative; z-index:1; border-top:1px solid var(--line);background:rgba(10,10,11,.6)}
+  .site-foot-inner{
+    max-width:900px;margin:0 auto;padding:22px;
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  }
+  .site-foot-brand{font-weight:700;font-size:13px;letter-spacing:.22em;text-indent:.22em;color:var(--text)}
+  .site-foot-links{display:flex;gap:3px;flex-wrap:wrap;margin-right:auto}
+  .site-foot-links a{
+    font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;color:var(--dim);
+    text-decoration:none;padding:6px 10px;border-radius:999px;border:1px solid transparent;
+    transition:color .16s ease,background .16s ease,border-color .16s ease;
+  }
+  .site-foot-links a:hover{color:var(--text);background:var(--bg2);border-color:var(--line-2)}
+  .site-foot-copy{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;color:var(--faint)}
+
+  @media (max-width:520px){
+    .wrap{gap:38px}
+    .stack{gap:38px}
+    .chart canvas{height:240px}
+  }
+</style>
+</head>
+<body>
+  <canvas id="matrix" aria-hidden="true"></canvas>
+  <nav class="nav" aria-label="Primary">
+    <div class="nav-inner">
+      <a class="nav-brand" href="/" aria-label="KAIROS — home">
+        <span class="nav-mark"><img src="/logo.png" alt=""></span>
+        <span class="nav-word">KAIROS</span>
+      </a>
+      <button class="nav-toggle" id="navToggle" type="button"
+              aria-label="Toggle menu" aria-expanded="false" aria-controls="navLinks">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="nav-links" id="navLinks">
+        <a class="nav-link" href="#how">How it works</a>
+        <a class="nav-link" href="#strategy">Strategy</a>
+        <a class="nav-link" href="https://www.youtube.com/@AJFUTURES" target="_blank" rel="noopener">YouTube</a>
+        <a class="nav-link" href="https://onlyrules.online" target="_blank" rel="noopener">Community</a>
+        <a class="nav-link nav-cta" href="https://app.your-domain.example/dashboard">Dashboard</a>
+      </div>
+    </div>
+  </nav>
+
+  <h1 class="sr-only">KAIROS — an autonomous futures bot that trades the inversion Fair Value Gap</h1>
+  <main class="wrap">
+    <div class="stack">
+
+      <div class="brand">
+        <div class="mark"><img src="/logo.png" alt="KAIROS"></div>
+        <div>
+          <p class="wordmark">KAIROS</p>
+          <div class="tagline">the right moment</div>
+        </div>
+      </div>
+
+      <p class="lede">An autonomous futures bot that waits for one thing —
+        an <b>inversion Fair Value Gap</b> — then executes the trade.</p>
+
+      <div class="pipe" id="how" aria-hidden="true">
+        <span class="node">TradingView</span>
+        <span class="wire"><span class="pulse"></span></span>
+        <span class="node core">KAIROS</span>
+        <span class="wire"><span class="pulse" style="animation-delay:1.2s"></span></span>
+        <span class="node">Broker</span>
+      </div>
+
+      <figure class="chart" aria-hidden="true" style="margin:0">
+        <canvas id="ifvg" width="600" height="300"></canvas>
+        <figcaption class="chart-cap"><span class="sw"></span> inversion &middot; the moment KAIROS acts</figcaption>
+      </figure>
+
+      <p class="concept">An impulse leaves a gap of unfilled orders. When price
+        returns and <b>closes back through it</b>, that fair value gap inverts —
+        old support becomes resistance. KAIROS reads that inversion off TradingView
+        and fires on TopstepX in milliseconds.</p>
+
+      <div class="pitch" id="strategy">
+        <div class="pitch-k">strategy-agnostic engine</div>
+        <p>iFVG is only the default. <b>Create your strategy in Pine Script</b> —
+          point it at KAIROS and the bot runs the entries, stops, sizing and exits
+          around your edge, executed the same way, every time.</p>
+        <a class="pitch-link" href="https://www.tradingview.com/script/1QRkNIj0-IFVG-Pro-v-1/" target="_blank" rel="noopener">The default signal: IFVG&nbsp;Pro on TradingView&nbsp;&rarr;</a>
+      </div>
+
+      <div class="caps">
+        <div class="row">
+          <span class="chip">MNQ</span><span class="chip">NQ</span>
+          <span class="chip">MES</span><span class="chip">ES</span>
+          <span class="chip">MGC</span><span class="chip">GC</span>
+          <span class="chip more">+ many more</span>
+        </div>
+
+        <ul class="sr-only">
+          <li>Multiple trading modes</li><li>Structural profit management</li>
+          <li>Structural stops</li><li>Auto break-even</li><li>Position stacking</li>
+          <li>Gap-size filter</li><li>Direction bias</li><li>Macro-time window</li>
+          <li>No-hedge protection</li><li>Instant TradingView to broker execution</li>
+        </ul>
+
+        <div class="ticker" aria-hidden="true">
+          <div class="track">
+            <span class="tile hot">multiple trading modes</span>
+            <span class="tile">structural profit management</span>
+            <span class="tile">structural stops</span>
+            <span class="tile">auto break-even</span>
+            <span class="tile">position stacking</span>
+            <span class="tile">gap-size filter</span>
+            <span class="tile">direction bias</span>
+            <span class="tile">macro-time window</span>
+            <span class="tile">no-hedge protection</span>
+            <span class="tile hot">instant TradingView &rarr; broker</span>
+            <span class="tile hot dup">multiple trading modes</span>
+            <span class="tile dup">structural profit management</span>
+            <span class="tile dup">structural stops</span>
+            <span class="tile dup">auto break-even</span>
+            <span class="tile dup">position stacking</span>
+            <span class="tile dup">gap-size filter</span>
+            <span class="tile dup">direction bias</span>
+            <span class="tile dup">macro-time window</span>
+            <span class="tile dup">no-hedge protection</span>
+            <span class="tile hot dup">instant TradingView &rarr; broker</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="foot"><span class="dot"></span> your-domain.example</div>
+
+    </div>
+  </main>
+
+  <footer class="site-foot">
+    <div class="site-foot-inner">
+      <span class="site-foot-brand">KAIROS</span>
+      <nav class="site-foot-links" aria-label="Footer">
+        <a href="#how">How it works</a>
+        <a href="#strategy">Strategy</a>
+        <a href="https://www.youtube.com/@AJFUTURES" target="_blank" rel="noopener">YouTube</a>
+        <a href="https://onlyrules.online" target="_blank" rel="noopener">OnlyRules &#8599;</a>
+        <a href="https://app.your-domain.example/dashboard">Dashboard</a>
+      </nav>
+      <span class="site-foot-copy">&copy; 2026 KAIROS &middot; the right moment</span>
+    </div>
+  </footer>
+
+<script>
+/* ── matrix digital rain ─────────────────────────────────────────────
+   Monochrome (white head → grey trail → transparent) to honour KAIROS's
+   strict black-&-white brand. Glyphs span several scripts — halfwidth
+   katakana, Latin, Greek, Cyrillic, Hebrew, digits, symbols — so the rain
+   "alternates" across languages the way the classic effect does.
+   Canvas is transparent (only glyphs are painted); intensity is governed
+   by the --matrix-opacity CSS variable on :root.                          */
+(function(){
+  var cv = document.getElementById('matrix');
+  if(!cv || !cv.getContext) return;
+  var ctx = cv.getContext('2d');
+
+  function range(a,b){ var s=''; for(var i=a;i<=b;i++){ s+=String.fromCharCode(i); } return s; }
+  var GLYPHS = (
+    range(0xFF66,0xFF9D) +   // halfwidth katakana — the iconic Matrix glyphs
+    range(0x0030,0x0039) +   // 0-9
+    range(0x0041,0x005A) +   // A-Z
+    range(0x0391,0x03A9) +   // Greek upper
+    range(0x03B1,0x03C9) +   // Greek lower
+    range(0x0410,0x042F) +   // Cyrillic
+    range(0x05D0,0x05EA) +   // Hebrew (non-connecting)
+    '0123456789' +           // weight numerals a little heavier
+    '¦|+*=<>¥$£§#@%&'         // glyphic punctuation / symbols
+  );
+  function rnd(){ return GLYPHS.charAt((Math.random()*GLYPHS.length)|0); }
+
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var FONT = 16;          // cell size in CSS px
+  var TRAIL = 18;         // glyphs in each fading tail
+  var W=0, H=0, cols=0, rows=0;
+  var grid=[], head=[], stepMs=[], nextStep=[];
+
+  function build(){
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr);
+    cv.style.width = W+'px'; cv.style.height = H+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.textBaseline = 'top';
+    cols = Math.ceil(W/FONT);
+    rows = Math.ceil(H/FONT)+1;
+    grid=[]; head=[]; stepMs=[]; nextStep=[];
+    for(var c=0;c<cols;c++){
+      var col = new Array(rows);
+      for(var r=0;r<rows;r++){ col[r] = rnd(); }
+      grid[c] = col;
+      // stagger starts up the screen so columns don't fall in lockstep
+      head[c] = -((Math.random()*rows)|0);
+      stepMs[c] = 55 + Math.random()*95;   // ms between row advances (speed)
+      nextStep[c] = 0;
+    }
+  }
+
+  function drawColumn(c){
+    var hr = Math.floor(head[c]);
+    var x = c*FONT;
+    for(var k=0;k<TRAIL;k++){
+      var r = hr - k;
+      if(r<0 || r>=rows) continue;
+      var ch = grid[c][r];
+      if(k===0){
+        // leading glyph — bright white with a soft glow
+        ctx.shadowColor = 'rgba(255,255,255,.85)';
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = 'rgba(255,255,255,.95)';
+      } else {
+        ctx.shadowBlur = 0;
+        // fade white → grey → transparent down the tail
+        var t = k/TRAIL;
+        var lum = Math.round(244 - t*150);
+        ctx.fillStyle = 'rgba('+lum+','+lum+','+(lum+4)+','+(0.55*(1-t)).toFixed(3)+')';
+      }
+      ctx.fillText(ch, x, r*FONT);
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  var raf=null;
+  function frame(now){
+    ctx.clearRect(0,0,W,H);
+    ctx.font = '500 '+FONT+"px 'JetBrains Mono', ui-monospace, monospace";
+    for(var c=0;c<cols;c++){
+      if(now >= nextStep[c]){
+        head[c] += 1;
+        nextStep[c] = now + stepMs[c];
+        var hr = Math.floor(head[c]);
+        if(hr>=0 && hr<rows){ grid[c][hr] = rnd(); }   // fresh glyph enters at the head
+        if(hr - TRAIL > rows){                          // fully off screen → recycle
+          head[c] = -((Math.random()*8)|0);
+          stepMs[c] = 55 + Math.random()*95;
+        }
+      }
+      // occasional flicker — a visible glyph mutates mid-fall
+      if(Math.random() < 0.012){
+        var rr = Math.floor(head[c]) - ((Math.random()*TRAIL)|0);
+        if(rr>=0 && rr<rows){ grid[c][rr] = rnd(); }
+      }
+      drawColumn(c);
+    }
+    raf = requestAnimationFrame(frame);
+  }
+
+  function staticFrame(){
+    // reduced-motion: paint one calm, dim field with no animation
+    ctx.clearRect(0,0,W,H);
+    ctx.font = '500 '+FONT+"px 'JetBrains Mono', ui-monospace, monospace";
+    ctx.shadowBlur = 0;
+    for(var c=0;c<cols;c++){
+      for(var r=0;r<rows;r++){
+        if(Math.random() < 0.5) continue;
+        ctx.fillStyle = 'rgba(220,220,224,'+(0.06 + Math.random()*0.10).toFixed(3)+')';
+        ctx.fillText(grid[c][r], c*FONT, r*FONT);
+      }
+    }
+  }
+
+  function init(){
+    build();
+    if(raf){ cancelAnimationFrame(raf); raf=null; }
+    if(reduce){ staticFrame(); }
+    else { raf = requestAnimationFrame(frame); }
+  }
+
+  var rz=null;
+  window.addEventListener('resize', function(){
+    clearTimeout(rz);
+    rz = setTimeout(init, 180);
+  });
+  // pause when the tab is hidden — no point burning frames off-screen
+  document.addEventListener('visibilitychange', function(){
+    if(reduce) return;
+    if(document.hidden){ if(raf){ cancelAnimationFrame(raf); raf=null; } }
+    else if(!raf){ raf = requestAnimationFrame(frame); }
+  });
+
+  init();
+})();
+</script>
+<script>
+(function(){
+  var cv = document.getElementById('ifvg');
+  if(!cv || !cv.getContext) return;
+  var ctx = cv.getContext('2d');
+  var W = 600, H = 300;
+
+  // o,h,l,c per candle — a bullish impulse (idx 2) leaves a Fair Value Gap, price
+  // drifts up then pulls back INTO the gap, and a large bearish candle (idx INV)
+  // CLOSES decisively below it: the gap inverts into an iFVG.
+  var data = [
+    {o:100,h:103,l:99 ,c:102},
+    {o:102,h:103,l:100,c:101},
+    {o:101,h:119,l:101,c:117},  // impulse — leaves the FVG behind it
+    {o:117,h:122,l:115,c:120},  // confirms the gap [103,115]
+    {o:120,h:121,l:117,c:118},  // small drift
+    {o:118,h:119,l:114,c:115},  // small candle — just ticks into the gap
+    {o:115,h:116,l:110,c:111},  // small candle — drifts deeper in
+    {o:111,h:112,l:96 ,c:98 },  // LARGE bearish candle — closes below -> inverts
+    {o:98 ,h:99 ,l:92 ,c:94 },
+    {o:94 ,h:95 ,l:89 ,c:90 }
+  ];
+  var INV   = 7;     // the large candle that closes below the gap -> inversion
+  var gapHi = 115;   // top of the fair value gap (price)
+  var gapLo = 103;   // bottom of the fair value gap (price)
+  var N = data.length;
+
+  var minP = 88, maxP = 123;
+  var padX = 26, padTop = 26, padBot = 30;
+
+  function fit(){
+    var dpr = window.devicePixelRatio || 1;
+    var rect = cv.getBoundingClientRect();
+    W = rect.width || 600;
+    H = rect.height || 300;
+    cv.width = Math.round(W*dpr);
+    cv.height = Math.round(H*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+
+  function yOf(p){
+    var plotH = H - padTop - padBot;
+    return padTop + (maxP - p)/(maxP - minP) * plotH;
+  }
+  function xOf(i){
+    var plotW = W - padX*2;
+    return padX + (i + 0.5)/N * plotW;
+  }
+  var cw = function(){ return Math.min(15, (W - padX*2)/N * 0.6); };
+
+  function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+  function mix(a,b,t){ return a+(b-a)*t; }
+  function rgba(r,g,b,a){ return 'rgba('+Math.round(r)+','+Math.round(g)+','+Math.round(b)+','+a+')'; }
+  // FVG box originates at the impulse candle that created it, extends right.
+  function bandX0(){ return Math.max(padX, xOf(2) - cw()*0.9); }
+
+  function rrect(x,y,w,h,r){
+    if(h < r*2) r = h/2;
+    if(w < r*2) r = w/2;
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  function drawCandle(i, alpha){
+    var d = data[i];
+    var x = xOf(i);
+    var w = cw();
+    var up = d.c >= d.o;
+    var bodyTop = yOf(Math.max(d.o,d.c));
+    var bodyBot = yOf(Math.min(d.o,d.c));
+    var bh = Math.max(2, bodyBot - bodyTop);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    // wick
+    ctx.strokeStyle = up ? 'rgba(244,244,246,.55)' : 'rgba(150,150,158,.55)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x, yOf(d.h));
+    ctx.lineTo(x, yOf(d.l));
+    ctx.stroke();
+    // body — monochrome: near-white for up, grey for down
+    ctx.fillStyle = up ? 'rgba(244,244,246,.95)' : 'rgba(120,120,128,.92)';
+    rrect(x - w/2, bodyTop, w, bh, 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // invP 0->1 smoothly morphs the neutral FVG zone into the neon-red iFVG zone:
+  // white (neutral) -> #ff384e (bearish inversion), with a glow that grows with t.
+  function drawBand(invP, alpha){
+    var yTop = yOf(gapHi);
+    var yBot = yOf(gapLo);
+    var x0 = bandX0();
+    var x1 = W - padX;
+    var t = invP;
+    var nr = 255, ng = mix(255,56,t), nb = mix(255,78,t);   // white -> neon red
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = rgba(nr, ng, nb, mix(0.05,0.16,t));
+    ctx.fillRect(x0, yTop, x1 - x0, yBot - yTop);
+    if(t > 0){ ctx.shadowColor = 'rgba(255,56,78,.9)'; ctx.shadowBlur = 12*t; }
+    ctx.strokeStyle = rgba(nr, ng, nb, mix(0.20,0.65,t));
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(x0,yTop); ctx.lineTo(x1,yTop); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x0,yBot); ctx.lineTo(x1,yBot); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+    // label — FVG stays put and reddens; an 'i' slides in front to make iFVG.
+    // (avoids the muddy overlap of crossfading two different-width strings.)
+    ctx.font = '600 10px ' + "'JetBrains Mono', monospace";
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    var ly = (yTop + yBot)/2;
+    var lx = xOf(2) + cw()*0.5 + 8;   // clear of the impulse candle body
+    var iW = ctx.measureText('i').width;
+    ctx.globalAlpha = alpha;
+    if(t > 0){ ctx.shadowColor = 'rgba(255,56,78,.85)'; ctx.shadowBlur = 8*t; }
+    ctx.fillStyle = rgba(nr, ng, nb, mix(0.36,0.98,t));
+    ctx.fillText('FVG', lx + iW, ly);
+    if(invP > 0){
+      ctx.globalAlpha = alpha * invP;
+      ctx.fillStyle = 'rgba(255,72,92,.98)';
+      ctx.fillText('i', lx, ly);
+    }
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  function drawEntry(alpha){
+    var d = data[INV];
+    var x = xOf(INV);
+    var y = yOf(d.c);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    // entry line — neon red (bearish entry)
+    ctx.strokeStyle = 'rgba(255,90,108,.55)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3,4]);
+    ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(W - padX, y); ctx.stroke();
+    ctx.setLineDash([]);
+    // downward chevron just above the candle — neon red, glowing
+    var cx = x, cy = yOf(d.h) - 12;
+    ctx.shadowColor = 'rgba(255,56,78,.9)'; ctx.shadowBlur = 10;
+    ctx.fillStyle = 'rgba(255,92,110,.98)';
+    ctx.beginPath();
+    ctx.moveTo(cx - 5, cy - 6);
+    ctx.lineTo(cx + 5, cy - 6);
+    ctx.lineTo(cx, cy + 2);
+    ctx.closePath();
+    ctx.fill();
+    // SHORT tag
+    ctx.font = '700 9px ' + "'JetBrains Mono', monospace";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = 'rgba(255,120,134,.98)';
+    ctx.fillText('SHORT', cx, cy - 9);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  function ease(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var D = 450;        // ms per candle
+  var HOLD = 2400;    // ms hold on the full picture
+  var total = N*D + HOLD;
+  var start = null;
+
+  function frame(now){
+    if(start === null) start = now;
+    var elapsed = now - start;
+    if(!reduce && elapsed > total){ start = now; elapsed = 0; }
+    fit();
+    ctx.clearRect(0,0,W,H);
+
+    var rev, bandA, invP;
+    if(reduce){
+      rev = N; bandA = 1; invP = 1;
+    } else {
+      rev   = Math.min(N, elapsed / D);
+      bandA = clamp((rev - 3) / 0.8, 0, 1);    // gap appears AFTER the impulse forms it
+      invP  = ease(clamp(rev - INV, 0, 1));     // morphs as the large candle closes through
+    }
+
+    if(bandA > 0) drawBand(invP, bandA);
+
+    var full = Math.floor(rev);
+    for(var i=0;i<full && i<N;i++) drawCandle(i, 1);
+    if(full < N) drawCandle(full, ease(Math.min(1, (rev - full) * 1.15)));
+
+    if(invP > 0) drawEntry(invP);
+
+    requestAnimationFrame(frame);
+  }
+
+  fit();
+  window.addEventListener('resize', fit);
+  requestAnimationFrame(frame);
+})();
+</script>
+<script>
+(function(){
+  var t = document.getElementById('navToggle'),
+      l = document.getElementById('navLinks');
+  if(!t || !l) return;
+  function close(){ l.classList.remove('open'); t.setAttribute('aria-expanded','false'); }
+  t.addEventListener('click', function(){
+    var open = l.classList.toggle('open');
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  // Tapping a link (or Escape) closes the collapsed mobile menu.
+  l.addEventListener('click', function(e){ if(e.target.closest('a')) close(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+})();
+</script>
+</body>
+</html>

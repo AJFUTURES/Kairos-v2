@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KAIROS · Trade Analytics</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#141925; --panel2:#1b2230; --line:#26304a;
+    --txt:#e6edf6; --muted:#8b97ad; --green:#27d39b; --red:#ff5d6c;
+    --accent:#5b8cff; --gold:#f3c969; --purple:#b18cff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    padding:28px 32px 60px;}
+  h1{font-size:22px;margin:0;letter-spacing:.5px}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
+    margin:0 0 14px;font-weight:600}
+  .sub{color:var(--muted);font-size:12px;margin-top:4px}
+  header{display:flex;justify-content:space-between;align-items:flex-end;
+    flex-wrap:wrap;gap:12px;margin-bottom:22px;border-bottom:1px solid var(--line);padding-bottom:18px}
+  .logo{display:flex;align-items:center;gap:12px}
+  .logo .mark{width:34px;height:34px;border-radius:9px;
+    background:linear-gradient(135deg,var(--accent),var(--purple));
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px}
+  /* filters */
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}
+  .filters .group{display:flex;gap:6px;align-items:center;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+  .filters label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .chip{padding:4px 11px;border-radius:20px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--muted);cursor:pointer;font-size:12px;user-select:none}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  /* kpi tiles */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:24px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px 16px}
+  .kpi .k{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  .kpi .v{font-size:24px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
+  .kpi .d{font-size:11px;color:var(--muted);margin-top:3px}
+  .pos{color:var(--green)} .neg{color:var(--red)}
+  /* layout */
+  .grid{display:grid;gap:16px;margin-bottom:16px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:1.4fr 1fr}
+  @media(max-width:900px){.g2,.g3{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .chartbox{position:relative;height:300px}
+  .chartbox.tall{height:340px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 10px;text-align:right;white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;
+    border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
+  tbody tr{border-bottom:1px solid rgba(38,48,74,.5)}
+  tbody tr:hover{background:var(--panel2)}
+  .tag{padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600}
+  .tag.buy{background:rgba(39,211,155,.15);color:var(--green)}
+  .tag.sell{background:rgba(255,93,108,.15);color:var(--red)}
+  .badge{padding:1px 7px;border-radius:5px;font-size:10px;background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+  .badge.aplus{background:rgba(243,201,105,.15);color:var(--gold);border-color:rgba(243,201,105,.4)}
+  .tablewrap{max-height:520px;overflow:auto}
+  .note{color:var(--muted);font-size:11px;margin-top:10px;line-height:1.5}
+  .mono{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="mark">K</div>
+    <div>
+      <h1>KAIROS — Trade Analytics</h1>
+      <div class="sub" id="meta"></div>
+    </div>
+  </div>
+  <div class="sub" id="range"></div>
+</header>
+
+<div class="filters" id="filters"></div>
+<div class="kpis" id="kpis"></div>
+
+<div class="grid g3">
+  <div class="card"><h2>Equity Curve (cumulative P&amp;L)</h2><div class="chartbox tall"><canvas id="equity"></canvas></div></div>
+  <div class="card"><h2>Outcome Breakdown</h2><div class="chartbox tall"><canvas id="outcomes"></canvas></div></div>
+</div>
+
+<div class="grid g2">
+  <div class="card"><h2>P&amp;L by Session</h2><div class="chartbox"><canvas id="bySession"></canvas></div></div>
+  <div class="card"><h2>Win Rate &amp; Expectancy</h2><div class="chartbox"><canvas id="expectancy"></canvas></div>
+    <div class="note" id="rrNote"></div></div>
+</div>
+
+<div class="grid g2">
+  <div class="card"><h2>By Instrument</h2><table id="instTable"></table></div>
+  <div class="card"><h2>By Strategy / Stop-Mode</h2><table id="stratTable"></table></div>
+</div>
+
+<div class="card">
+  <h2>All Trades <span class="sub" id="tradeCount" style="text-transform:none;letter-spacing:0"></span></h2>
+  <div class="tablewrap"><table id="tradeTable"></table></div>
+</div>
+
+<script>
+const DATA = /*__DATA__*/;
+const C = {green:'#27d39b',red:'#ff5d6c',accent:'#5b8cff',gold:'#f3c969',purple:'#b18cff',muted:'#8b97ad',line:'#26304a',txt:'#e6edf6'};
+Chart.defaults.color = C.muted;
+Chart.defaults.font.family = "-apple-system,Segoe UI,Roboto,sans-serif";
+Chart.defaults.borderColor = 'rgba(38,48,74,.4)';
+
+const ALL = DATA.trades;
+const money = n => (n<0?'-$':'$') + Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const pct = n => n.toFixed(1)+'%';
+const cls = n => n>0?'pos':(n<0?'neg':'');
+const uniq = (arr,k) => [...new Set(arr.map(x=>x[k]))];
+
+// ---- filter state ----
+const state = {inst:new Set(), strat:new Set(), dir:new Set()};
+const charts = {};
+
+function applyFilters(){
+  return ALL.filter(t =>
+    (state.inst.size===0 || state.inst.has(t.inst)) &&
+    (state.strat.size===0 || state.strat.has(t.strategy)) &&
+    (state.dir.size===0 || state.dir.has(t.dir)));
+}
+
+function buildFilters(){
+  const f = document.getElementById('filters');
+  const groups = [
+    ['Instrument','inst', uniq(ALL,'inst').sort()],
+    ['Strategy','strat', uniq(ALL,'strategy')],
+    ['Direction','dir', uniq(ALL,'dir')],
+  ];
+  groups.forEach(([label,key,vals])=>{
+    const g=document.createElement('div'); g.className='group';
+    g.innerHTML=`<label>${label}</label>`;
+    vals.forEach(v=>{
+      const c=document.createElement('span'); c.className='chip'; c.textContent=v;
+      c.onclick=()=>{ state[key].has(v)?state[key].delete(v):state[key].add(v); c.classList.toggle('on'); render(); };
+      g.appendChild(c);
+    });
+    f.appendChild(g);
+  });
+}
+
+// ---- metrics ----
+function metrics(rows){
+  const n=rows.length;
+  const net=rows.reduce((s,t)=>s+t.pnl,0);
+  const wins=rows.filter(t=>t.pnl>0), losses=rows.filter(t=>t.pnl<0), flat=rows.filter(t=>t.pnl===0);
+  const grossWin=wins.reduce((s,t)=>s+t.pnl,0), grossLoss=Math.abs(losses.reduce((s,t)=>s+t.pnl,0));
+  const avgWin=wins.length?grossWin/wins.length:0, avgLoss=losses.length?grossLoss/losses.length:0;
+  const winRate=n?wins.length/n*100:0;
+  const pf=grossLoss>0?grossWin/grossLoss:(grossWin>0?Infinity:0);
+  const expectancy=n?net/n:0;
+  const payoff=avgLoss>0?avgWin/avgLoss:0;
+  const plannedRR=(()=>{const v=rows.filter(t=>t.planned_rr); return v.length?v.reduce((s,t)=>s+t.planned_rr,0)/v.length:0})();
+  const best=rows.reduce((m,t)=>t.pnl>m?t.pnl:m,-Infinity), worst=rows.reduce((m,t)=>t.pnl<m?t.pnl:m,Infinity);
+  // max drawdown on cumulative curve
+  let cum=0,peak=0,dd=0;
+  rows.forEach(t=>{cum+=t.pnl; if(cum>peak)peak=cum; dd=Math.min(dd,cum-peak);});
+  return {n,net,wins:wins.length,losses:losses.length,flat:flat.length,winRate,grossWin,grossLoss,
+    avgWin,avgLoss,pf,expectancy,payoff,plannedRR,best,worst,maxDD:dd};
+}
+
+function kpis(m){
+  const tiles=[
+    ['Net P&L', money(m.net), cls(m.net), `${m.n} closed trades`],
+    ['Win Rate', pct(m.winRate), '', `${m.wins}W · ${m.losses}L${m.flat?` · ${m.flat} BE`:''}`],
+    ['Profit Factor', m.pf===Infinity?'∞':m.pf.toFixed(2), cls(m.pf-1), 'gross win / gross loss'],
+    ['Expectancy', money(m.expectancy), cls(m.expectancy), 'avg P&L per trade'],
+    ['Avg Win', money(m.avgWin), 'pos', `avg loss ${money(-m.avgLoss)}`],
+    ['Payoff Ratio', m.payoff.toFixed(2), cls(m.payoff-1), 'avg win / avg loss'],
+    ['Best / Worst', money(m.best), '', `worst ${money(m.worst)}`],
+    ['Max Drawdown', money(m.maxDD), 'neg', 'peak-to-trough'],
+  ];
+  document.getElementById('kpis').innerHTML = tiles.map(([k,v,c,d])=>
+    `<div class="kpi"><div class="k">${k}</div><div class="v ${c}">${v}</div><div class="d">${d}</div></div>`).join('');
+}
+
+function destroy(id){ if(charts[id]){charts[id].destroy(); delete charts[id];} }
+
+function equityChart(rows){
+  destroy('equity');
+  let cum=0; const pts=rows.map((t,i)=>{cum+=t.pnl; return {x:i+1,y:+cum.toFixed(2)};});
+  const ctx=document.getElementById('equity');
+  charts.equity=new Chart(ctx,{type:'line',data:{datasets:[{
+    data:pts, borderColor:C.accent, borderWidth:2, tension:.15, pointRadius:0,
+    fill:true, backgroundColor:(c)=>{const a=c.chart.ctx.createLinearGradient(0,0,0,340);
+      a.addColorStop(0,'rgba(91,140,255,.35)');a.addColorStop(1,'rgba(91,140,255,0)');return a;}
+  }]},options:{maintainAspectRatio:false,plugins:{legend:{display:false},
+    tooltip:{callbacks:{title:i=>`Trade #${i[0].parsed.x}`,label:i=>'Cumulative '+money(i.parsed.y)}}},
+    scales:{x:{type:'linear',title:{display:true,text:'trade #'},grid:{display:false}},
+      y:{ticks:{callback:v=>'$'+v.toLocaleString()}}}}});
+}
+
+function outcomeChart(rows){
+  destroy('outcomes');
+  const order=['TP hit','Close-based','Break-even','Stop'];
+  const colors={'TP hit':C.green,'Close-based':C.accent,'Break-even':C.gold,'Stop':C.red};
+  const counts={}; rows.forEach(t=>counts[t.outcome]=(counts[t.outcome]||0)+1);
+  const labels=order.filter(o=>counts[o]);
+  Object.keys(counts).forEach(o=>{if(!labels.includes(o))labels.push(o);});
+  charts.outcomes=new Chart(document.getElementById('outcomes'),{type:'doughnut',
+    data:{labels,datasets:[{data:labels.map(l=>counts[l]),
+      backgroundColor:labels.map(l=>colors[l]||C.purple),borderColor:'#141925',borderWidth:3}]},
+    options:{maintainAspectRatio:false,cutout:'58%',plugins:{legend:{position:'bottom',
+      labels:{padding:14,usePointStyle:true}},tooltip:{callbacks:{label:i=>{
+        const tot=i.dataset.data.reduce((a,b)=>a+b,0);
+        return `${i.label}: ${i.parsed} (${(i.parsed/tot*100).toFixed(0)}%)`;}}}}}});
+}
+
+function sessionChart(rows){
+  destroy('bySession');
+  const map={}; rows.forEach(t=>{map[t.session]=(map[t.session]||0)+t.pnl;});
+  const labels=Object.keys(map).sort();
+  charts.bySession=new Chart(document.getElementById('bySession'),{type:'bar',
+    data:{labels,datasets:[{data:labels.map(l=>+map[l].toFixed(2)),
+      backgroundColor:labels.map(l=>map[l]>=0?C.green:C.red),borderRadius:5}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:i=>money(i.parsed.y)}}},
+      scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>'$'+v}}}}});
+}
+
+function expectancyChart(rows){
+  destroy('expectancy');
+  // win rate vs payoff by strategy bubble-ish bar: show avg P&L per strategy
+  const strats=uniq(rows,'strategy');
+  const data=strats.map(s=>{const r=rows.filter(t=>t.strategy===s);return +(r.reduce((a,t)=>a+t.pnl,0)/r.length).toFixed(2);});
+  charts.expectancy=new Chart(document.getElementById('expectancy'),{type:'bar',
+    data:{labels:strats,datasets:[{label:'Expectancy ($/trade)',data,
+      backgroundColor:data.map(v=>v>=0?C.green:C.red),borderRadius:5}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:i=>'Expectancy '+money(i.parsed.x)}}},
+      scales:{x:{ticks:{callback:v=>'$'+v}},y:{grid:{display:false}}}}});
+}
+
+function groupTable(elId, rows, key){
+  const groups=uniq(rows,key);
+  const recs=groups.map(g=>{const r=rows.filter(t=>t[key]===g);return [g,metrics(r)];})
+    .sort((a,b)=>b[1].net-a[1].net);
+  const head=`<thead><tr><th>${key==='inst'?'Instrument':'Strategy'}</th><th>Trades</th><th>Win %</th>
+    <th>Net P&L</th><th>Avg/Trade</th><th>PF</th></tr></thead>`;
+  const body=recs.map(([g,m])=>`<tr><td><strong>${g}</strong></td><td class="mono">${m.n}</td>
+    <td class="mono">${pct(m.winRate)}</td>
+    <td class="mono ${cls(m.net)}">${money(m.net)}</td>
+    <td class="mono ${cls(m.expectancy)}">${money(m.expectancy)}</td>
+    <td class="mono">${m.pf===Infinity?'∞':m.pf.toFixed(2)}</td></tr>`).join('');
+  document.getElementById(elId).innerHTML=head+`<tbody>${body}</tbody>`;
+}
+
+let sortKey='idx', sortDir=1;
+function tradeTable(rows){
+  const cols=[['idx','#'],['session','Session'],['inst','Inst'],['dir','Dir'],['strategy','Strategy'],
+    ['outcome','Outcome'],['planned_rr','R:R'],['pnl','P&L'],['source','Signal']];
+  const idx=rows.map((t,i)=>({...t,idx:i+1}));
+  idx.sort((a,b)=>{let x=a[sortKey],y=b[sortKey];
+    if(typeof x==='string'){x=x||'';y=y||'';return sortDir*x.localeCompare(y);}
+    return sortDir*((x??-1e15)-(y??-1e15));});
+  const head='<thead><tr>'+cols.map(([k,l])=>`<th data-k="${k}">${l}</th>`).join('')+'</tr></thead>';
+  const body=idx.map(t=>`<tr>
+    <td class="mono">${t.idx}</td><td>${t.session}</td>
+    <td><span class="badge">${t.inst}</span></td>
+    <td><span class="tag ${t.dir.toLowerCase()}">${t.dir}</span></td>
+    <td>${t.strategy} ${t.aplus?'<span class="badge aplus">A+</span>':''}</td>
+    <td>${t.outcome_raw}</td>
+    <td class="mono">${t.planned_rr?('1:'+t.planned_rr):'—'}</td>
+    <td class="mono ${cls(t.pnl)}">${money(t.pnl)}</td>
+    <td class="sub" style="font-size:11px">${t.source||''}</td></tr>`).join('');
+  const el=document.getElementById('tradeTable');
+  el.innerHTML=head+`<tbody>${body}</tbody>`;
+  el.querySelectorAll('th').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k; if(k===sortKey)sortDir*=-1; else{sortKey=k;sortDir=1;} tradeTable(rows);});
+  document.getElementById('tradeCount').textContent=`· ${rows.length} shown`;
+}
+
+function render(){
+  const rows=applyFilters();
+  const m=metrics(rows);
+  kpis(m);
+  equityChart(rows); outcomeChart(rows); sessionChart(rows); expectancyChart(rows);
+  groupTable('instTable',rows,'inst');
+  groupTable('stratTable',rows,'strategy');
+  tradeTable(rows);
+  document.getElementById('rrNote').innerHTML =
+    `Avg planned reward:risk <strong>1:${m.plannedRR.toFixed(2)}</strong> · `+
+    `payoff ratio (avg win/avg loss) <strong>${m.payoff.toFixed(2)}</strong> · `+
+    `expectancy <strong class="${cls(m.expectancy)}">${money(m.expectancy)}</strong> per trade.`;
+}
+
+// ---- init ----
+document.getElementById('meta').textContent = `Generated ${DATA.generated} · ${ALL.length} closed trades`;
+const sessions=uniq(ALL,'session').sort();
+document.getElementById('range').textContent = sessions.length?`Sessions ${sessions[0]} → ${sessions[sessions.length-1]}`:'';
+buildFilters();
+render();
+</script>
+</body>
+</html>

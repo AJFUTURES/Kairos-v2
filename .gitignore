@@ -1,0 +1,30 @@
+# ── Secrets — NEVER commit ────────────────────────────────────────────────────
+.env
+
+# ── Runtime state, logs & trade data ─────────────────────────────────────────
+bot_state.json
+*.log
+kairos.log
+trade_logs.txt
+results.txt
+Analytics/kairos_analytics.html
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+*.egg-info/
+
+# ── IDE / editor ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.claude/
+
+# ── OS junk ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Deploy/tooling caches ─────────────────────────────────────────────────────
+.wrangler/

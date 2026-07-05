@@ -1,0 +1,181 @@
+//@version=6
+indicator("KAIROS", shorttitle="KAIROS", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KAIROS — IFVG entry signaller (public reference version)
+//
+// This is a trimmed-down version of the KAIROS signal script. It detects
+// Inverted Fair Value Gaps (IFVG) and fires buy/sell webhook alerts to the bot.
+// The full private version adds swing-stop placement, structural invalidation
+// exits, and A+ setup detection (higher-timeframe FVG draws + macro windows) —
+// those fields are optional in the bot's webhook payload, so this version works
+// end-to-end on its own; the bot simply falls back to its own stop/target logic.
+//
+// SETUP: replace YOUR_WEBHOOK_SECRET below with the WEBHOOK_SECRET value from
+// your .env file, then create a TradingView alert on this indicator with
+// "Any alert() function call" and your bot's webhook URL.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// -----------------------------------------------------------------------------
+// --- 1. INPUTS ---
+// -----------------------------------------------------------------------------
+grp_setup = "IFVG Constraints"
+setupLookback = input.int(20, "Setup Sequence Lookback", minval=5, maxval=60, group=grp_setup)
+lookForward   = input.int(5, "Box Projection (Bars)", minval=1, maxval=50, group=grp_setup)
+// Optional SOURCE-side floor: skip firing when the inverted-FVG gap is under this
+// many ticks. Leave at 0 — the BOT enforces the real per-group "Minimum FVG Ticks"
+// (the gap is sent as `imbalance` below). Raise only to cut webhook noise globally.
+minImbalanceTicks = input.int(0, "Min Imbalance Size (ticks, 0=off)", minval=0, group=grp_setup)
+
+grp_vis = "IFVG Visuals"
+themeMode    = input.string("Dark", "Theme Mode", options=["Dark", "Light"], group=grp_vis)
+lblSizeInput = input.string("Small", "Label Size", options=["Auto", "Tiny", "Small", "Normal", "Large", "Huge"], group=grp_vis)
+showCE       = input.bool(true, "Show CE (50%) Line", group=grp_vis)
+bullColor    = input.color(color.new(color.green, 80), "Bullish Setup Color", group=grp_vis)
+bearColor    = input.color(color.new(color.red, 80), "Bearish Setup Color", group=grp_vis)
+failColor    = input.color(color.new(color.gray, 85), "Failed Setup Color", group=grp_vis)
+delInvalid   = input.bool(false, "Delete Invalid Setups", group=grp_vis)
+
+// -----------------------------------------------------------------------------
+// --- 2. CONFIG & TYPES ---
+// -----------------------------------------------------------------------------
+txtColor = themeMode == "Light" ? color.black : color.white
+
+string lblSize = switch lblSizeInput
+    "Auto"   => size.auto
+    "Tiny"   => size.tiny
+    "Small"  => size.small
+    "Normal" => size.normal
+    "Large"  => size.large
+    "Huge"   => size.huge
+    => size.small
+
+type IfvgSetup
+    box   id
+    label lbl
+    line  ce
+    bool  isBullish
+    float realTop
+    float realBtm
+    bool  isValid
+
+var IfvgSetup[] activeSetups = array.new<IfvgSetup>()
+
+rangesOverlap(top1, btm1, top2, btm2) =>
+    math.max(btm1, btm2) < math.min(top1, top2)
+
+// Timeframe string for alert payloads — e.g. "1m", "3m", "5m"
+tfString = timeframe.isintraday ? timeframe.period + "m" : timeframe.period
+
+// -----------------------------------------------------------------------------
+// --- 3. IFVG VISUAL LOGIC (CANDLE 3 CONFIRMATION) ---
+// -----------------------------------------------------------------------------
+isBullFVG = low > high[2]
+isBearFVG = high < low[2]
+
+if isBullFVG or isBearFVG
+    newTop = isBullFVG ? low : low[2]
+    newBtm = isBullFVG ? high[2] : high
+
+    for i = 1 to setupLookback
+        bool oldIsBull = low[i] > high[i+2]
+        bool oldIsBear = high[i] < low[i+2]
+
+        if (isBullFVG and oldIsBear) or (isBearFVG and oldIsBull)
+            oldTop = oldIsBull ? low[i] : low[i+2]
+            oldBtm = oldIsBull ? high[i+2] : high[i]
+
+            if rangesOverlap(newTop, newBtm, oldTop, oldBtm)
+                boxColor  = isBullFVG ? bullColor : bearColor
+                txtSymbol = isBullFVG ? "+IFVG" : "-IFVG"
+                visTop = math.min(oldTop, newTop)
+                visBtm = math.max(oldBtm, newBtm)
+                midPoint = (visTop + visBtm) / 2
+
+                b = box.new(left = bar_index[i+2], top = visTop, bottom = visBtm, right = bar_index + lookForward, border_color = boxColor, bgcolor = boxColor)
+                l = label.new(x = bar_index + lookForward, y = midPoint, text = txtSymbol, color = color.new(color.white, 100), textcolor = txtColor, style = label.style_none, size = lblSize)
+
+                line ceLine = na
+                if showCE
+                    ceLine := line.new(x1 = bar_index[i+2], y1 = midPoint, x2 = bar_index + lookForward, y2 = midPoint, color = color.new(txtColor, 50), style = line.style_dashed)
+
+                newSetup = IfvgSetup.new(b, l, ceLine, isBullFVG, visTop, visBtm, true)
+                array.push(activeSetups, newSetup)
+                break
+
+// -----------------------------------------------------------------------------
+// --- 4. ENTRY ALERTS (CANDLE 2 TRIGGER) ---
+// -----------------------------------------------------------------------------
+bool firedEarlyAlert = false
+
+for i = 1 to setupLookback
+    if firedEarlyAlert
+        break
+
+    bool oldIsBull = low[i] > high[i+2]
+    bool oldIsBear = high[i] < low[i+2]
+
+    // --- BULLISH INVERSION ---
+    if oldIsBear
+        float oldTop = low[i+2]
+        bool isUnmitigated = true
+        if i > 1
+            for j = 1 to i - 1
+                if close[j] > oldTop
+                    isUnmitigated := false
+                    break
+
+        // Imbalance = the inverted (old bearish) FVG gap: low[i+2] (top) → high[i] (bottom).
+        float gapBull = low[i+2] - high[i]
+        if isUnmitigated and close > oldTop and close[1] <= oldTop and gapBull >= minImbalanceTicks * syminfo.mintick
+            // sl_price = candle 1's HIGH (structural reference the bot can use);
+            // entry_ref = candle 2 close; imbalance = gap size in ticks.
+            alert('{"secret":"YOUR_WEBHOOK_SECRET","symbol":"' + syminfo.root + '","action":"buy","timeframe":"' + tfString + '","ifvg_type":"Bullish","sl_price":' + str.tostring(high[1], "#.00") + ',"entry_ref":' + str.tostring(close, "#.00") + ',"imbalance":' + str.tostring(gapBull / syminfo.mintick, "#.##") + '}', alert.freq_once_per_bar_close)
+            firedEarlyAlert := true
+
+    // --- BEARISH INVERSION ---
+    if oldIsBull
+        float oldBtm = high[i+2]
+        bool isUnmitigated = true
+        if i > 1
+            for j = 1 to i - 1
+                if close[j] < oldBtm
+                    isUnmitigated := false
+                    break
+
+        // Imbalance = the inverted (old bullish) FVG gap: low[i] (top) → high[i+2] (bottom).
+        float gapBear = low[i] - high[i+2]
+        if isUnmitigated and close < oldBtm and close[1] >= oldBtm and gapBear >= minImbalanceTicks * syminfo.mintick
+            // sl_price = candle 1's LOW (structural reference the bot can use);
+            // entry_ref = candle 2 close; imbalance = gap size in ticks.
+            alert('{"secret":"YOUR_WEBHOOK_SECRET","symbol":"' + syminfo.root + '","action":"sell","timeframe":"' + tfString + '","ifvg_type":"Bearish","sl_price":' + str.tostring(low[1], "#.00") + ',"entry_ref":' + str.tostring(close, "#.00") + ',"imbalance":' + str.tostring(gapBear / syminfo.mintick, "#.##") + '}', alert.freq_once_per_bar_close)
+            firedEarlyAlert := true
+
+// -----------------------------------------------------------------------------
+// --- 5. VISUAL INVALIDATION MANAGEMENT (chart cleanup only) ---
+// -----------------------------------------------------------------------------
+if array.size(activeSetups) > 0
+    for i = array.size(activeSetups) - 1 to 0
+        s = array.get(activeSetups, i)
+        if s.isValid
+            bool failed = false
+            if s.isBullish
+                if close < s.realBtm
+                    failed := true
+            else
+                if close > s.realTop
+                    failed := true
+
+            if failed
+                if delInvalid
+                    box.delete(s.id)
+                    label.delete(s.lbl)
+                    line.delete(s.ce)
+                    array.remove(activeSetups, i)
+                else
+                    box.set_bgcolor(s.id, failColor)
+                    box.set_border_color(s.id, failColor)
+                    label.set_textcolor(s.lbl, color.new(txtColor, 50))
+                    line.delete(s.ce)
+                    s.isValid := false
+                    array.set(activeSetups, i, s)

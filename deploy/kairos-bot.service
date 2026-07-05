@@ -1,0 +1,23 @@
+# KAIROS trading bot — systemd service (replaces the Mac's start.sh + caffeinate).
+# Install:  sudo cp kairos-bot.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now kairos-bot
+# NOTE: written for an Ubuntu image (default user `ubuntu`, home /home/ubuntu).
+#       On Oracle Linux the default user is `opc` — replace ubuntu→opc below.
+[Unit]
+Description=KAIROS trading bot
+After=network-online.target kairos-tunnel.service
+Wants=network-online.target
+# Always restart, never give up — a trading bot must come back after any crash.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KAIROS
+# main.py reads .env from WorkingDirectory via python-dotenv, binds 127.0.0.1:8000.
+ExecStart=/home/ubuntu/KAIROS/venv/bin/python main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
