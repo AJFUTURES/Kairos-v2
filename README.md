@@ -2,7 +2,7 @@
 
 **KAIROS** is an automated futures-trading system built around Inverted Fair Value Gaps (IFVG). It has two halves that talk to each other over a webhook:
 
-1. **A TradingView Pine Script indicator** (`alertbot.pine`) that detects IFVG setups on intraday charts and fires a JSON alert the moment a signal candle closes.
+1. **A TradingView Pine Script indicator** (`alertbot.pine`) that detects IFVG setups on intraday charts and fires a JSON alert the moment a signal candle closes. It also draws **higher-timeframe (15m / 1h / 4h) FVGs** right on your chart as visual context, with per-timeframe toggles, colors, and auto-cleanup as they get filled.
 2. **A Python (FastAPI) execution bot** (`main.py`) that receives those alerts, validates and filters them, and places bracket orders on futures through the **ProjectX / TopstepX API** — with live fill tracking over SignalR websockets, structural (close-based) invalidation exits, per-instrument risk filters, Discord/Telegram trade notifications, persistent state, and a token-protected web dashboard for live control (pause, position sizing, instrument toggles, presets, account switching, flatten-all).
 
 Supported instruments: **MNQ / NQ, MES / ES, MGC / GC, CL** (micro and full-size Nasdaq, S&P, Gold, and Crude futures).
