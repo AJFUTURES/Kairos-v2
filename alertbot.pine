@@ -179,3 +179,80 @@ if array.size(activeSetups) > 0
                     line.delete(s.ce)
                     s.isValid := false
                     array.set(activeSetups, i, s)
+
+// -----------------------------------------------------------------------------
+// --- 6. HTF FVG OVERLAY ---
+// -----------------------------------------------------------------------------
+grp_htf      = "HTF FVG Overlay"
+show15m      = input.bool(true, "Show 15m FVGs", group=grp_htf)
+show1h       = input.bool(true, "Show 1h FVGs", group=grp_htf)
+show4h       = input.bool(true, "Show 4h FVGs", group=grp_htf)
+showLastCnt  = input.int(10, "Show Last (Quantity)", options=[5, 10, 15, 50], group=grp_htf)
+htfBullColor = input.color(color.new(color.lime, 80), "HTF Bullish Color", group=grp_htf)
+htfBearColor = input.color(color.new(color.red, 80), "HTF Bearish Color", group=grp_htf)
+
+type HtfFvg
+    box    id
+    label  lbl
+    float  top
+    float  btm
+    bool   isBull
+    int    startTime
+
+var array<HtfFvg> arrHtfFvgs = array.new<HtfFvg>()
+
+f_calc_htf_fvg() =>
+    bool isBull = low[1] > high[3]
+    float bullTop = low[1]
+    float bullBtm = high[3]
+    bool isBear = high[1] < low[3]
+    float bearTop = low[3]
+    float bearBtm = high[1]
+    [isBull, bullTop, bullBtm, isBear, bearTop, bearBtm, time[3]]
+
+f_manage_htf(string tf, bool show, string tfLabel) =>
+    if show
+        [isBull, bullTop, bullBtm, isBear, bearTop, bearBtm, gapTime] = request.security(syminfo.tickerid, tf, f_calc_htf_fvg(), lookahead=barmerge.lookahead_on)
+
+        if gapTime != gapTime[1]
+            if isBull
+                string txt = tfLabel + " Bullish FVG"
+                b = box.new(left=gapTime, top=bullTop, bottom=bullBtm, right=time + timeframe.multiplier*60*10, xloc=xloc.bar_time, border_color=htfBullColor, bgcolor=htfBullColor)
+                l = label.new(x=time + timeframe.multiplier*60*10, y=(bullTop + bullBtm)/2, text=txt, xloc=xloc.bar_time, style=label.style_none, textcolor=color.white, textalign=text.align_left, size=size.small)
+                array.push(arrHtfFvgs, HtfFvg.new(b, l, bullTop, bullBtm, true, gapTime))
+
+            if isBear
+                string txt = tfLabel + " Bearish FVG"
+                b = box.new(left=gapTime, top=bearTop, bottom=bearBtm, right=time + timeframe.multiplier*60*10, xloc=xloc.bar_time, border_color=htfBearColor, bgcolor=htfBearColor)
+                l = label.new(x=time + timeframe.multiplier*60*10, y=(bearTop + bearBtm)/2, text=txt, xloc=xloc.bar_time, style=label.style_none, textcolor=color.white, textalign=text.align_left, size=size.small)
+                array.push(arrHtfFvgs, HtfFvg.new(b, l, bearTop, bearBtm, false, gapTime))
+
+f_manage_htf("15", show15m, "15m")
+f_manage_htf("60", show1h,  "1H")
+f_manage_htf("240", show4h, "4H")
+
+if array.size(arrHtfFvgs) > 0
+    for i = array.size(arrHtfFvgs) - 1 to 0
+        HtfFvg f = array.get(arrHtfFvgs, i)
+        bool invalidate = false
+
+        if f.isBull
+            if close < f.btm
+                invalidate := true
+        else
+            if close > f.top
+                invalidate := true
+
+        if invalidate
+            box.delete(f.id)
+            label.delete(f.lbl)
+            array.remove(arrHtfFvgs, i)
+        else
+            int projection = time + (time - time[1]) * 10
+            box.set_right(f.id, projection)
+            label.set_x(f.lbl, projection)
+
+    while array.size(arrHtfFvgs) > showLastCnt
+        HtfFvg old = array.shift(arrHtfFvgs)
+        box.delete(old.id)
+        label.delete(old.lbl)

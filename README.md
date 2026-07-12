@@ -2,14 +2,14 @@
 
 **KAIROS** is an automated futures-trading system built around Inverted Fair Value Gaps (IFVG). It has two halves that talk to each other over a webhook:
 
-1. **A TradingView Pine Script indicator** (`kairos.pine`) that detects IFVG setups on intraday charts and fires a JSON alert the moment a signal candle closes.
+1. **A TradingView Pine Script indicator** (`alertbot.pine`) that detects IFVG setups on intraday charts and fires a JSON alert the moment a signal candle closes.
 2. **A Python (FastAPI) execution bot** (`main.py`) that receives those alerts, validates and filters them, and places bracket orders on futures through the **ProjectX / TopstepX API** — with live fill tracking over SignalR websockets, structural (close-based) invalidation exits, per-instrument risk filters, Discord/Telegram trade notifications, persistent state, and a token-protected web dashboard for live control (pause, position sizing, instrument toggles, presets, account switching, flatten-all).
 
 Supported instruments: **MNQ / NQ, MES / ES, MGC / GC, CL** (micro and full-size Nasdaq, S&P, Gold, and Crude futures).
 
 ![KAIROS dashboard in action](assets/dashboard.png)
 
-> **Note on the included Pine script:** `kairos.pine` in this repository is a public reference version — it detects IFVGs and fires entry alerts. The advanced signal-side features (swing-stop placement, structural invalidation exit alerts, A+ setup detection against higher-timeframe FVG draws) are not included. Those alert fields are optional, so the bot works with this script as-is and falls back to its own stop/target logic.
+> **Note on the included Pine script:** `alertbot.pine` in this repository is a public reference version — it detects IFVGs and fires entry alerts. The advanced signal-side features (swing-stop placement, structural invalidation exit alerts, A+ setup detection against higher-timeframe FVG draws) are not included. Those alert fields are optional, so the bot works with this script as-is and falls back to its own stop/target logic.
 
 ---
 
@@ -97,7 +97,7 @@ The dashboard (`/dashboard?token=<DASHBOARD_TOKEN>`) is the bot's live control p
 
 Alerts flow: **TradingView chart → alert() → your webhook URL → bot**.
 
-1. Open `kairos.pine`, replace `YOUR_WEBHOOK_SECRET` (2 occurrences) with the exact `WEBHOOK_SECRET` from your `.env`, then add the indicator to your chart (Pine Editor → paste → Add to chart). Use an intraday chart (e.g. 1m/3m/5m) of a supported instrument.
+1. Open `alertbot.pine`, replace `YOUR_WEBHOOK_SECRET` (2 occurrences) with the exact `WEBHOOK_SECRET` from your `.env`, then add the indicator to your chart (Pine Editor → paste → Add to chart). Use an intraday chart (e.g. 1m/3m/5m) of a supported instrument.
 2. Create an alert: **Alerts → Create Alert**, Condition = **KAIROS** → **Any alert() function call**.
 3. In **Notifications**, enable **Webhook URL** and set it to your public webhook endpoint, e.g. `https://app.<your-domain>/webhook`.
 4. Leave the message field alone — the script builds the JSON payload itself.
@@ -116,7 +116,7 @@ Optional fields the bot also understands (sent by the full private script): `swi
 
 ```
 main.py            The bot — webhook, filters, execution, dashboard API
-kairos.pine        TradingView IFVG indicator (public reference version)
+alertbot.pine      TradingView IFVG indicator (public reference version)
 requirements.txt   Python dependencies
 start.sh           Foreground runner (macOS/Linux)
 bot.sh             macOS launchd background service manager
