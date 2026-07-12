@@ -8,6 +8,7 @@ import json
 import websockets
 import ssl
 import certifi
+import adaptive_sizing as adaptive   # adaptive position-sizing engine (micros only)
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
@@ -635,6 +636,50 @@ ACCOUNT_SIZE_META = {
 account_size = "custom"
 
 
+# ─── Adaptive position-sizing mode (micros only) ──────────────────────────────
+# A self-contained, OPT-IN sizing mode. When OFF (the default) NOTHING below runs
+# and the bot behaves exactly as before. When ON, for the adaptive micros it:
+#   • sizes each entry from a persisted risk multiplier (win ×g / 2nd-loss ×c),
+#   • uses a FIXED per-instrument stop/target (plain bracket, no structural exit),
+#   • enforces ONE open position account-wide (ignore signals until flat),
+#   • counts break-even (|net|≤band) as nothing, carries the multiplier across days,
+#   • hard-stops the bot after N losing trades in a day (manual resume only).
+# The ladder engine itself lives in adaptive_sizing.py (pure + unit-tested).
+adaptive_enabled  = False                       # master toggle (persisted)
+adaptive_settings = adaptive.default_settings() # tunable params + per-micro geometry (persisted)
+adaptive_state    = adaptive.default_state()    # live ladder: mult / streak / daily stop (persisted)
+ADAPTIVE_MICROS   = adaptive.MICROS             # ("MNQ","MES","MGC")
+
+
+def _futures_day_key() -> str:
+    """Label for the current futures trading day (rolls at 18:00 New York), used to
+    reset the adaptive daily-loss counter once per day."""
+    n = datetime.now(NY_TZ)
+    d = n.date()
+    if n.hour >= 18:            # after the 6pm NY roll → count toward the next day
+        d = d + timedelta(days=1)
+    return d.isoformat()
+
+
+def adaptive_active_for(symbol: str) -> bool:
+    """True only when adaptive mode is ON and this symbol is an adaptive micro."""
+    return bool(adaptive_enabled) and symbol in ADAPTIVE_MICROS
+
+
+def adaptive_qty(symbol: str) -> int:
+    """Micros to trade on the next adaptive entry (multiplier × base, floor 1, no cap)."""
+    return adaptive.contracts_for(adaptive_state.get("mult", 1.0),
+                                  adaptive_settings.get("base_micros", 1))
+
+
+def _any_position_open() -> bool:
+    """True if ANY enabled instrument currently holds a position (account-wide lock)."""
+    for s in enabled_symbols:
+        if (positions.get(s) or {}).get("direction", "FLAT") != "FLAT":
+            return True
+    return False
+
+
 def active_sizing() -> dict:
     """The sizing table currently in force — a risk preset when an account size is
     selected, otherwise the hand-tuned SIZING."""
@@ -831,6 +876,11 @@ def _serialize_state() -> dict:
         "macro_window":    macro_window,
         "user_presets":    user_presets,
         "active_preset":   active_preset,
+        # Adaptive sizing mode (opt-in). The ladder state is persisted on purpose so
+        # the multiplier CARRIES across restarts and days (unlike the breaker).
+        "adaptive_enabled":  adaptive_enabled,
+        "adaptive_settings": adaptive_settings,
+        "adaptive_state":    adaptive_state,
         # Strip separator entries before saving — they're re-added on load
         "trade_log": [t for t in trade_log if not t.get("separator")],
     }
@@ -1018,6 +1068,7 @@ def load_state():
     """Load persisted state on startup. Adds a session separator to trade_log."""
     global trading_mode, trade_log, enabled_symbols, trade_settings, active_account
     global instrument_bias, account_size, user_presets, active_preset, macro_window, tf1m_session
+    global adaptive_enabled, adaptive_settings, adaptive_state
     if not os.path.exists(STATE_FILE):
         print("[STATE] No state file found — starting fresh")
         return
@@ -1102,6 +1153,15 @@ def load_state():
                 macro_window = int(data["macro_window"])
         except (ValueError, TypeError):
             pass
+        # Adaptive sizing mode (opt-in). Validate settings; keep the persisted
+        # ladder state (mult/streak/daily-stop) so it carries across restarts/days.
+        adaptive_enabled = bool(data.get("adaptive_enabled", False))
+        adaptive_settings = adaptive.sanitize_settings(data.get("adaptive_settings"))
+        _as = data.get("adaptive_state")
+        if isinstance(_as, dict):
+            _st = adaptive.default_state()
+            _st.update({k: _as[k] for k in _st if k in _as})
+            adaptive_state = _st
         # User-defined setting presets + the active selection.
         _up = data.get("user_presets")
         if isinstance(_up, dict):
@@ -1978,6 +2038,7 @@ async def place_order(client, token, account_id, symbol, side, current_size,
     mode_lbl  = _stop_mode_label(trade_settings)   # stop mode, for log/feed messages
     _qty      = qty_for(symbol)        # contracts this entry adds (per-instrument)
     _cap      = max_contracts_for(symbol)
+    _adaptive_this_trade = False       # set True below when adaptive mode sizes this order
     contract   = contracts.get(symbol) or {}
     tick       = contract.get("tick") or 0.25
     # Robust price reference for SL/TP math. `last` is best, but on a thin feed it
@@ -2122,6 +2183,30 @@ async def place_order(client, token, account_id, symbol, side, current_size,
             tp_source = f"inherited ({_itp:.2f})"
         else:
             await alog(f"{symbol} stacked entry — no live/stored SL/TP, using fresh brackets", "warning")
+
+    # ── ADAPTIVE MODE: fixed per-instrument geometry + ladder size ────────────
+    # When adaptive mode is on for this micro, override the size and the stop/target
+    # with the engine's values and force a PLAIN hard bracket (no structural /
+    # two-phase / swing close-based exit). No-op when adaptive mode is off. Fresh
+    # entries only — adaptive mode never stacks (single-position lock guarantees it).
+    if adaptive_active_for(symbol) and current_size == 0 and not a_plus:
+        _geo = adaptive.geometry_for(adaptive_settings, symbol)
+        if _geo:
+            _stop_pts, _tp_pts = _geo
+            _qty      = adaptive_qty(symbol)
+            sl_t      = pts_to_ticks(_stop_pts)
+            tp_t      = max(1, round(_tp_pts / tick))
+            sl_pts    = round(sl_t * tick, 2)
+            tp_pts    = round(tp_t * tick, 2)
+            sl_ticks  = -sl_t if side == 0 else sl_t
+            tp_ticks  = tp_t if side == 0 else -tp_t
+            sl_source = f"adaptive fixed {sl_pts}pt"
+            tp_source = f"adaptive fixed {tp_pts}pt"
+            structural = _two_phase = _swing_used = False   # plain bracket, no structural exit
+            _adaptive_this_trade = True                      # → skip auto-BE (fixed 20/50 outcome)
+            await alog(f"{symbol} ADAPTIVE — {_qty}× micro · stop {sl_pts}pt / TP {tp_pts}pt "
+                       f"(mult {adaptive_state.get('mult', 1.0):.2f})", "system",
+                       feed_msg=f"Adaptive · {symbol} {_qty}× {sl_pts}/{tp_pts}pt")
 
     payload = {
         "accountId":         account_id,
@@ -2331,7 +2416,9 @@ async def place_order(client, token, account_id, symbol, side, current_size,
                         )
 
         # ── Arm break-even tracking (only when Auto-BE@50% is enabled) ─────────
-        if trade_settings.get("auto_be"):
+        # Adaptive trades never arm BE — they run a pure fixed bracket (stop/target
+        # exactly as configured) so every outcome is a clean win or loss for the ladder.
+        if trade_settings.get("auto_be") and not _adaptive_this_trade:
             prev_state  = be_state.get(symbol) or {}
             # Merge: keep any prior IDs not in the new list (handles stacked entries
             # where the old bracket is still open alongside the new one), then add
@@ -2434,6 +2521,27 @@ async def execute_trade(symbol: str, action: str, ifvg_info: str = None, is_test
         # now that refresh_positions reads type/size correctly.
         await refresh_positions(client, token, account_id)
         sig_pos = positions.get(symbol) or blank_pos()
+
+        # ── ADAPTIVE MODE GATE (opt-in; no-op when adaptive_enabled is False) ──
+        # Micros only, ONE position account-wide, and a hard daily-loss stop. These
+        # checks run before the normal signal handling and only when the mode is on.
+        if adaptive_enabled and not is_test:
+            if adaptive_state.get("stopped"):
+                await alog(f"{symbol} IGNORED — adaptive daily-loss stop active (manual resume required)",
+                           "warning", feed_msg=f"Adaptive stop · {symbol} {direction} ignored")
+                return
+            if symbol not in ADAPTIVE_MICROS:
+                await alog(f"{symbol} IGNORED — adaptive mode trades micros only "
+                           f"({', '.join(ADAPTIVE_MICROS)})", "warning",
+                           feed_msg=f"Adaptive skip · {symbol} not a micro")
+                return
+            if sig_pos["direction"] == "FLAT" and _any_position_open():
+                _open = [s for s in enabled_symbols
+                         if (positions.get(s) or {}).get("direction", "FLAT") != "FLAT"]
+                await alog(f"{symbol} IGNORED — adaptive single-position lock "
+                           f"({', '.join(_open)} still open); waiting for flat",
+                           "warning", feed_msg=f"Adaptive lock · {symbol} held")
+                return
 
         if is_test:
             sl_desc = "structural (close-based + safety net)" if trade_settings.get("structural_sl") else f"fixed {SAFETY_NET_PTS.get(symbol, 40)}pt"
@@ -3172,6 +3280,7 @@ async def reconcile_session_pnl(client, token, account_id):
     wins = losses = 0
     nets = []            # chronological net P&L per realized close (streak + breaker)
     closes_by_sym = {}   # sym -> [net_str, ...] chronological (trade_log backfill)
+    _adaptive_events = []   # ladder transitions to notify about after the loop
     for t in trades:
         if t.get("voided"):
             continue
@@ -3181,6 +3290,15 @@ async def reconcile_session_pnl(client, token, account_id):
         net = round(pnl - (t.get("fees") or 0.0), 2)
         realized += net
         nets.append(net)
+        # Adaptive ladder: advance the multiplier / daily-stop for each NEW close.
+        # Guarded by the persisted last_ts so a re-run of this idempotent reconcile
+        # (every poll/fill, and after restarts) never applies the same trade twice.
+        if adaptive_enabled:
+            _ts = t.get("creationTimestamp") or ""
+            if _ts and _ts > adaptive_state.get("last_ts", ""):
+                _ev = adaptive.apply_close(adaptive_state, adaptive_settings, net, _futures_day_key())
+                adaptive_state["last_ts"] = _ts
+                _adaptive_events.append(_ev)
         if net >= 0: wins += 1
         else:        losses += 1
         sym = symbol_for_contract(t.get("contractId"))
@@ -3191,6 +3309,23 @@ async def reconcile_session_pnl(client, token, account_id):
     session_stats["realized_pnl"] = round(realized, 2)
     session_stats["wins"]   = wins
     session_stats["losses"] = losses
+
+    # Adaptive ladder side-effects: log cuts, announce the daily-loss stop, and
+    # persist the advanced ladder so the multiplier carries across restarts/days.
+    if adaptive_enabled and _adaptive_events:
+        for _ev in _adaptive_events:
+            if _ev.get("cut"):
+                await alog(f"⬇️ Adaptive risk cut — multiplier {_ev['mult_before']:.2f} → "
+                           f"{_ev['mult_after']:.2f} ({adaptive_settings.get('cut_after', 2)} losses in a row)",
+                           "warning", feed_msg="Adaptive · risk cut")
+            if _ev.get("stop_tripped"):
+                await alog(f"🛑 Adaptive DAILY-LOSS STOP — {adaptive_settings.get('daily_loss_limit', 10)} "
+                           f"losses today. Signals ignored until you resume manually.",
+                           "error", feed_msg="Adaptive · daily stop (manual resume)")
+                asyncio.create_task(notify_push(
+                    f"🛑 KAIROS adaptive daily-loss stop — {adaptive_settings.get('daily_loss_limit', 10)} "
+                    f"losses today. Trading halted, manual resume required.", mention=True))
+        save_state()
 
     _backfill_trade_log_pnl(closes_by_sym)     # C1 — persist P&L onto '—' rows
     await _evaluate_circuit_breaker(nets)      # B1 — auto-pause on a losing run
@@ -3858,6 +3993,19 @@ async def get_state():
         "signalr_market_connected": signalr_market_connected,
         "account_balance":          account_balance,
         "account_can_trade":        account_can_trade,
+        # Adaptive sizing mode (opt-in) — settings + live ladder for the dashboard.
+        "adaptive": {
+            "enabled":       adaptive_enabled,
+            "micros":        list(ADAPTIVE_MICROS),
+            "settings":      adaptive_settings,
+            "mult":          round(adaptive_state.get("mult", 1.0), 3),
+            "next_micros":   adaptive.contracts_for(adaptive_state.get("mult", 1.0),
+                                                    adaptive_settings.get("base_micros", 1)),
+            "loss_run":      adaptive_state.get("loss_run", 0),
+            "daily_losses":  adaptive_state.get("daily_losses", 0),
+            "daily_limit":   adaptive_settings.get("daily_loss_limit", 10),
+            "stopped":       adaptive_state.get("stopped", False),
+        },
     }
 
 
@@ -4073,6 +4221,67 @@ async def set_account_size(request: Request):
     save_state()
     await push_state_update()
     return {"account_size": account_size, "sizing_summary": sizing_summary()}
+
+
+# ─── Adaptive sizing mode endpoints ───────────────────────────────────────────
+@app.post("/api/adaptive/toggle", dependencies=[Depends(require_dashboard_auth)])
+async def adaptive_toggle(request: Request):
+    """Enable/disable adaptive sizing mode. When OFF the bot sizes exactly as before."""
+    global adaptive_enabled
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    adaptive_enabled = bool(data.get("enabled"))
+    await alog(f"Adaptive mode {'ENABLED' if adaptive_enabled else 'disabled'} · "
+               f"micros {', '.join(ADAPTIVE_MICROS)} · mult {adaptive_state.get('mult', 1.0):.2f}",
+               "system", feed_msg=f"Adaptive · {'on' if adaptive_enabled else 'off'}")
+    save_state()
+    await push_state_update()
+    return {"adaptive_enabled": adaptive_enabled}
+
+
+@app.post("/api/adaptive/settings", dependencies=[Depends(require_dashboard_auth)])
+async def adaptive_set_settings(request: Request):
+    """Update adaptive settings (ladder params + per-micro geometry). Validated and
+    clamped by the engine; unknown/bad fields fall back to defaults."""
+    global adaptive_settings
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    adaptive_settings = adaptive.sanitize_settings(data.get("settings") or data)
+    await alog("Adaptive settings updated", "system", feed_msg="Adaptive · settings saved")
+    save_state()
+    await push_state_update()
+    return {"adaptive_settings": adaptive_settings}
+
+
+@app.post("/api/adaptive/resume", dependencies=[Depends(require_dashboard_auth)])
+async def adaptive_resume(request: Request):
+    """Clear the adaptive daily-loss stop (manual resume). Resets today's loss count;
+    the risk multiplier is left untouched (it carries)."""
+    adaptive_state["stopped"] = False
+    adaptive_state["daily_losses"] = 0
+    adaptive_state["day_key"] = _futures_day_key()
+    await alog("Adaptive daily-loss stop cleared — trading resumed (multiplier unchanged)",
+               "system", feed_msg="Adaptive · resumed")
+    save_state()
+    await push_state_update()
+    return {"stopped": False}
+
+
+@app.post("/api/adaptive/reset", dependencies=[Depends(require_dashboard_auth)])
+async def adaptive_reset(request: Request):
+    """Reset the ladder back to base (multiplier 1.0, streak 0). Does not change the
+    daily-stop state or your settings."""
+    adaptive_state["mult"] = 1.0
+    adaptive_state["loss_run"] = 0
+    await alog("Adaptive ladder reset to base (multiplier 1.00)", "system",
+               feed_msg="Adaptive · ladder reset")
+    save_state()
+    await push_state_update()
+    return {"mult": 1.0}
 
 
 @app.post("/api/set-min-fvg", dependencies=[Depends(require_dashboard_auth)])

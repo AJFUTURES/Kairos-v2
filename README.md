@@ -3,11 +3,11 @@
 **KAIROS** is an automated futures-trading system built around Inverted Fair Value Gaps (IFVG). It has two halves that talk to each other over a webhook:
 
 1. **A TradingView Pine Script indicator** (`alertbot.pine`) that detects IFVG setups on intraday charts and fires a JSON alert the moment a signal candle closes. It also draws **higher-timeframe (15m / 1h / 4h) FVGs** right on your chart as visual context, with per-timeframe toggles, colors, and auto-cleanup as they get filled.
-2. **A Python (FastAPI) execution bot** (`main.py`) that receives those alerts, validates and filters them, and places bracket orders on futures through the **ProjectX / TopstepX API** — with live fill tracking over SignalR websockets, structural (close-based) invalidation exits, per-instrument risk filters, Discord/Telegram trade notifications, persistent state, and a token-protected web dashboard for live control (pause, position sizing, instrument toggles, presets, account switching, flatten-all).
+2. **A Python (FastAPI) execution bot** (`main.py`) that receives those alerts, validates and filters them, and places bracket orders on futures through the **ProjectX / TopstepX API** — with live fill tracking over SignalR websockets, structural (close-based) invalidation exits, per-instrument risk filters, opt-in **adaptive position sizing** (a win-scaled risk ladder on the micros), Discord/Telegram trade notifications, persistent state, and a token-protected web dashboard for live control (pause, position sizing, instrument toggles, presets, account switching, flatten-all).
 
 Supported instruments: **MNQ / NQ, MES / ES, MGC / GC, CL** (micro and full-size Nasdaq, S&P, Gold, and Crude futures).
 
-![KAIROS dashboard in action](assets/dashboard.png)
+![KAIROS dashboard with live trade log](assets/dashboard_logs.png)
 
 > **Note on the included Pine script:** `alertbot.pine` in this repository is a public reference version — it detects IFVGs and fires entry alerts. The advanced signal-side features (swing-stop placement, structural invalidation exit alerts, A+ setup detection against higher-timeframe FVG draws) are not included. Those alert fields are optional, so the bot works with this script as-is and falls back to its own stop/target logic.
 
@@ -90,12 +90,19 @@ The dashboard (`/dashboard?token=<DASHBOARD_TOKEN>`) is the bot's live control p
 - **Instruments** — tick each instrument on/off (micro MNQ · MES · MGC or mini NQ · ES · GC · CL) and click to cycle a per-symbol direction bias (long / short / both).
 - **Filters & Risk** — per-group Minimum FVG size (ticks) and Maximum Stop cap; configure the 1-minute session window (5m signals always trade, A+ any time) and the macro-window width (± minutes around each hour).
 - **A+ Setups** — master switch for A+ trades, fallback take-profit distances used when the alert carries no HTF FVG level, and a max-A+-per-session risk guard.
+- **Adaptive Sizing** — opt-in, micros-only risk ladder (see [Adaptive position sizing](#adaptive-position-sizing-micros-only) below): live multiplier and next contract count, plus the ladder params (win growth, loss cut, cut-after, floor, base micros, break-even band, daily-loss limit) and per-micro stop/target geometry, with a one-click manual resume after a daily-loss stop.
 - **Presets** — snapshot the entire current configuration as a named preset; apply or delete presets in one click.
 - **Testing** — fire simulated buy/sell signals and test notifications without touching the market, plus the live trade log, activity feed, and closed-trade results table.
+
+![Per-instrument filters and toggles in the dashboard](assets/instrument_filter.png)
 
 ## TradingView alert setup
 
 Alerts flow: **TradingView chart → alert() → your webhook URL → bot**.
+
+The indicator also overlays higher-timeframe (15m / 1h / 4h) FVGs on your chart for context:
+
+![Higher-timeframe FVGs drawn on the chart](assets/HTF_FVGs.png)
 
 1. Open `alertbot.pine`, replace `YOUR_WEBHOOK_SECRET` (2 occurrences) with the exact `WEBHOOK_SECRET` from your `.env`, then add the indicator to your chart (Pine Editor → paste → Add to chart). Use an intraday chart (e.g. 1m/3m/5m) of a supported instrument.
 2. Create an alert: **Alerts → Create Alert**, Condition = **KAIROS** → **Any alert() function call**.
@@ -112,10 +119,27 @@ The alert payload looks like:
 
 Optional fields the bot also understands (sent by the full private script): `swing_sl`, `c1_high`, `c1_low`, `a_plus`, `a_plus_target`, and `action: "exit"` for structural invalidation exits. When absent, the bot falls back to its own stop and target logic.
 
+## Adaptive position sizing (micros only)
+
+An **opt-in** sizing mode that scales risk with your results on the micro instruments (**MNQ · MES · MGC**). It's **off by default** — when off, the bot sizes exactly as it always has. The ladder engine is a small, self-contained, side-effect-free module (`adaptive_sizing.py`) that `main.py` drives as trades close; the multiplier is persisted, so it **carries across restarts and trading days**.
+
+How the ladder moves (every value is tunable from the dashboard):
+
+- **Base** — 1 micro. Contracts traded = `round(base_micros × multiplier)`, floored at 1, no cap.
+- **Every win** → multiplier × `win_growth` (default 1.20); the consecutive-loss run resets.
+- **Every Nth loss in a row** (`cut_after`, default 2) → multiplier × `loss_cut` (default 0.50), floored at `floor_mult`.
+- **Break-even** (`|net| ≤ be_band`, default $25) → counts as nothing: no growth, no cut, streak untouched.
+- **Daily-loss stop** → after `daily_loss_limit` losing trades in one futures day, the bot halts and ignores signals until you **manually resume** from the dashboard. The daily count resets each futures day; the stop flag does not.
+
+While adaptive mode is on it also uses a **fixed per-instrument stop/target** (plain bracket, no structural/swing exit), enforces **one open position account-wide** (signals are ignored until flat), and trades **micros only**. Control endpoints: `POST /api/adaptive/toggle`, `/api/adaptive/settings`, `/api/adaptive/resume`, `/api/adaptive/reset`.
+
+![Closed-trade results and analytics](assets/results.png)
+
 ## Repository layout
 
 ```
 main.py            The bot — webhook, filters, execution, dashboard API
+adaptive_sizing.py Adaptive position-sizing ladder engine (pure, opt-in)
 alertbot.pine      TradingView IFVG indicator (public reference version)
 requirements.txt   Python dependencies
 start.sh           Foreground runner (macOS/Linux)
@@ -124,6 +148,7 @@ web/               Dashboard + login pages served by the bot
 site/              Static landing page (optional, e.g. Cloudflare Pages)
 deploy/            systemd units + cloud/tunnel deployment guides
 Analytics/         Trade-analytics dashboard generator (reads results.txt)
+assets/            README screenshots
 .env.example       Template for your .env
 ```
 

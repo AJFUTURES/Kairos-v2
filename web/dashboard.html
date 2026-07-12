@@ -618,6 +618,52 @@
       </div>
     </div>
 
+    <!-- ADAPTIVE SIZING (opt-in, micros only) -->
+    <div class="card" data-card="adaptive">
+      <div class="card-head card-toggle" onclick="toggleCard(this)">
+        <span class="ch-left"><span class="card-title">Adaptive Sizing</span><span class="card-hint" id="adapt-status">off</span></span>
+        <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
+      </div>
+      <div class="card-body">
+      <div class="settings-grid">
+        <div class="srow full"><span class="sk">Adaptive mode</span>
+          <span style="display:flex;align-items:center;gap:8px">
+            <button class="sv-select" id="adapt-toggle" onclick="adaptiveToggle()" style="max-width:120px;cursor:pointer">Enable</button>
+            <span class="card-hint" title="Micros only. When on, overrides sizing, stop/TP and stacking for MNQ/MES/MGC.">MNQ · MES · MGC</span>
+          </span>
+        </div>
+        <div class="srow"><span class="sk">Multiplier</span><span class="sv sv-strong" id="adapt-mult">1.00×</span></div>
+        <div class="srow"><span class="sk">Next size</span><span class="sv sv-strong" id="adapt-next">1 micro</span></div>
+        <div class="srow"><span class="sk">Loss run</span><span class="sv" id="adapt-run">0</span></div>
+        <div class="srow"><span class="sk">Daily losses</span><span class="sv" id="adapt-daily">0 / 10</span></div>
+        <div class="srow full"><span class="sk">Status</span>
+          <span style="display:flex;align-items:center;gap:8px">
+            <span class="sv" id="adapt-stopped">running</span>
+            <button class="sv-select" id="adapt-resume" onclick="adaptiveResume()" style="max-width:110px;cursor:pointer;display:none">Resume</button>
+            <button class="sv-select" onclick="adaptiveReset()" style="max-width:130px;cursor:pointer" title="Reset the multiplier back to 1.00×">Reset ladder</button>
+          </span>
+        </div>
+      </div>
+      <div class="sub-label">Ladder settings</div>
+      <div class="settings-grid">
+        <div class="srow"><span class="sk">Win growth ×</span><input class="sv-select" id="ad-win" type="number" step="0.05" min="1" style="max-width:90px"></div>
+        <div class="srow"><span class="sk">Loss cut ×</span><input class="sv-select" id="ad-cut" type="number" step="0.05" min="0.05" max="1" style="max-width:90px"></div>
+        <div class="srow"><span class="sk">Cut after N losses</span><input class="sv-select" id="ad-cutn" type="number" step="1" min="1" style="max-width:90px"></div>
+        <div class="srow"><span class="sk">Floor ×</span><input class="sv-select" id="ad-floor" type="number" step="0.05" min="0.01" max="1" style="max-width:90px"></div>
+        <div class="srow"><span class="sk">Base micros</span><input class="sv-select" id="ad-base" type="number" step="1" min="1" style="max-width:90px"></div>
+        <div class="srow"><span class="sk">Break-even band $</span><input class="sv-select" id="ad-band" type="number" step="1" min="0" style="max-width:90px"></div>
+        <div class="srow"><span class="sk">Daily loss limit</span><input class="sv-select" id="ad-daily" type="number" step="1" min="1" style="max-width:90px"></div>
+      </div>
+      <div class="sub-label">Per-micro geometry (points): stop / target</div>
+      <div class="settings-grid">
+        <div class="srow"><span class="sk">MNQ</span><span style="display:flex;gap:6px"><input class="sv-select" id="ad-MNQ-stop" type="number" step="0.25" min="0.25" style="max-width:72px"><input class="sv-select" id="ad-MNQ-tp" type="number" step="0.25" min="0.25" style="max-width:72px"></span></div>
+        <div class="srow"><span class="sk">MES</span><span style="display:flex;gap:6px"><input class="sv-select" id="ad-MES-stop" type="number" step="0.25" min="0.25" style="max-width:72px"><input class="sv-select" id="ad-MES-tp" type="number" step="0.25" min="0.25" style="max-width:72px"></span></div>
+        <div class="srow"><span class="sk">MGC</span><span style="display:flex;gap:6px"><input class="sv-select" id="ad-MGC-stop" type="number" step="0.25" min="0.25" style="max-width:72px"><input class="sv-select" id="ad-MGC-tp" type="number" step="0.25" min="0.25" style="max-width:72px"></span></div>
+      </div>
+      <div class="srow full" style="margin-top:8px"><button class="sv-select" onclick="adaptiveSaveSettings()" style="cursor:pointer">&#x1F4BE; Save adaptive settings</button></div>
+      </div>
+    </div>
+
     <!-- INSTRUMENTS -->
     <div class="card" data-card="instruments">
       <div class="card-head card-toggle" onclick="toggleCard(this)">
@@ -896,7 +942,7 @@ async function loadState(){
     const res=await authFetch('/api/state'); if(!res.ok) throw new Error(res.status);
     const data=await res.json();
     botPaused=data.bot_paused; window.__breaker=data.circuit_breaker||null; window.__breakerTs=Date.now(); tradingMode=data.trading_mode;
-    syncPauseUI(); captureTradeSettings(data); syncAccount(data); syncAccountSize(data); syncFiltersRisk(data); syncPresets(data);
+    syncPauseUI(); captureTradeSettings(data); syncAccount(data); syncAccountSize(data); syncFiltersRisk(data); syncPresets(data); syncAdaptive(data);
     updateSettings(data.settings,data.trading_mode,data.modes);
     renderInstruments(data.instruments||[]);
     document.getElementById('feed-body').innerHTML='';
@@ -912,7 +958,7 @@ async function refreshState(){
     const res=await authFetch('/api/state'); if(!res.ok) throw new Error(res.status);
     const data=await res.json();
     botPaused=data.bot_paused; window.__breaker=data.circuit_breaker||null; window.__breakerTs=Date.now(); tradingMode=data.trading_mode;
-    syncPauseUI(); captureTradeSettings(data); syncAccount(data); syncAccountSize(data); syncFiltersRisk(data); syncPresets(data);
+    syncPauseUI(); captureTradeSettings(data); syncAccount(data); syncAccountSize(data); syncFiltersRisk(data); syncPresets(data); syncAdaptive(data);
     updateSettings(data.settings,data.trading_mode,data.modes);
     renderInstruments(data.instruments||[]);
     renderTradeLog(data.trade_log||[]);
@@ -920,6 +966,56 @@ async function refreshState(){
     updateLiveData(data);
     setConnected(true);
   }catch(e){ setConnected(false); }
+}
+
+// ── Adaptive sizing (opt-in) ─────────────────────────────────────────────────
+let adaptiveEnabled=false, adaptiveSettings=null;
+function syncAdaptive(data){
+  const a=data.adaptive; if(!a) return;
+  adaptiveEnabled=!!a.enabled; adaptiveSettings=a.settings||adaptiveSettings;
+  const setT=(id,v)=>{const e=document.getElementById(id); if(e) e.textContent=v;};
+  const st=document.getElementById('adapt-status');
+  if(st){ st.textContent=a.enabled?('on · '+(a.mult!=null?a.mult.toFixed(2):'1.00')+'×'):'off'; st.style.color=a.enabled?'var(--green)':''; }
+  const tg=document.getElementById('adapt-toggle'); if(tg) tg.textContent=a.enabled?'Disable':'Enable';
+  setT('adapt-mult',(a.mult!=null?a.mult.toFixed(2):'1.00')+'×');
+  setT('adapt-next',(a.next_micros||1)+' micro'+((a.next_micros||1)===1?'':'s'));
+  setT('adapt-run',a.loss_run||0);
+  setT('adapt-daily',(a.daily_losses||0)+' / '+(a.daily_limit||10));
+  const stp=document.getElementById('adapt-stopped');
+  if(stp){ stp.textContent=a.stopped?'STOPPED (daily)':'running'; stp.style.color=a.stopped?'var(--red)':''; }
+  const rb=document.getElementById('adapt-resume'); if(rb) rb.style.display=a.stopped?'inline-block':'none';
+  // Fill inputs, but never clobber a field the user is currently editing.
+  const s=a.settings||{}, inst=s.instruments||{};
+  const setV=(id,v)=>{const e=document.getElementById(id); if(e && document.activeElement!==e && v!=null) e.value=v;};
+  setV('ad-win',s.win_growth); setV('ad-cut',s.loss_cut); setV('ad-cutn',s.cut_after);
+  setV('ad-floor',s.floor_mult); setV('ad-base',s.base_micros); setV('ad-band',s.be_band); setV('ad-daily',s.daily_loss_limit);
+  ['MNQ','MES','MGC'].forEach(m=>{ const g=inst[m]||{}; setV('ad-'+m+'-stop',g.stop_pts); setV('ad-'+m+'-tp',g.tp_pts); });
+}
+async function adaptiveToggle(){
+  const data=await(await authFetch('/api/adaptive/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!adaptiveEnabled})})).json();
+  if(data&&data.adaptive_enabled!=null){ adaptiveEnabled=data.adaptive_enabled; toast('Adaptive mode '+(adaptiveEnabled?'enabled':'disabled'),'ok'); }
+  refreshState();
+}
+function _adnum(id){ const e=document.getElementById(id); const v=e?parseFloat(e.value):NaN; return isNaN(v)?null:v; }
+async function adaptiveSaveSettings(){
+  const settings={
+    win_growth:_adnum('ad-win'), loss_cut:_adnum('ad-cut'), cut_after:_adnum('ad-cutn'),
+    floor_mult:_adnum('ad-floor'), base_micros:_adnum('ad-base'), be_band:_adnum('ad-band'),
+    daily_loss_limit:_adnum('ad-daily'),
+    instruments:{
+      MNQ:{stop_pts:_adnum('ad-MNQ-stop'),tp_pts:_adnum('ad-MNQ-tp')},
+      MES:{stop_pts:_adnum('ad-MES-stop'),tp_pts:_adnum('ad-MES-tp')},
+      MGC:{stop_pts:_adnum('ad-MGC-stop'),tp_pts:_adnum('ad-MGC-tp')},
+    }
+  };
+  await authFetch('/api/adaptive/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings})});
+  toast('Adaptive settings saved','ok'); refreshState();
+}
+async function adaptiveResume(){
+  await authFetch('/api/adaptive/resume',{method:'POST'}); toast('Adaptive stop cleared — trading resumed','ok'); refreshState();
+}
+async function adaptiveReset(){
+  await authFetch('/api/adaptive/reset',{method:'POST'}); toast('Ladder reset to 1.00×','ok'); refreshState();
 }
 
 // ── Pause ────────────────────────────────────────────────────────────────────
