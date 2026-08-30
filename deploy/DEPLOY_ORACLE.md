@@ -85,7 +85,7 @@ the three Cloudflare tunnel files.
 
 ```bash
 SRV=ubuntu@<SERVER_IP>          # <-- edit
-KDIR="/Users/<your-mac-username>/Desktop/AJ Ventures/KAIROS"
+KDIR="/path/to/KAIROS"
 
 # 4a. the app (keeps .env + bot_state.json; skips venv/__pycache__/logs/wrangler/git)
 rsync -av \

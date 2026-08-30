@@ -4669,6 +4669,13 @@ async def dashboard(request: Request,
     if not DASHBOARD_TOKEN:
         raise HTTPException(status_code=503, detail="DASHBOARD_TOKEN not configured")
 
+    control_headers = {
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+    }
+
     provided = token or dash
     if not provided or not hmac.compare_digest(provided, DASHBOARD_TOKEN):
         # Absent/wrong token → serve the login page (401). Flag a *failed* attempt
@@ -4677,14 +4684,14 @@ async def dashboard(request: Request,
         # never logged or echoed back into the page.
         denied = "1" if provided else ""
         return HTMLResponse(content=_read_page(_LOGIN_PATH).replace("__DENIED__", denied),
-                            status_code=401)
+                            status_code=401, headers=control_headers)
 
     # Valid → serve the dashboard. Inject the token so the page's fetch calls can
     # authenticate via the X-Dashboard-Token header. token is JSON-encoded to
     # safely embed it inside the JS string literal.
     tok  = token or dash or ""
     html = _read_page(_DASHBOARD_PATH).replace("__DASHBOARD_TOKEN__", json.dumps(tok)[1:-1])
-    resp = HTMLResponse(content=html)
+    resp = HTMLResponse(content=html, headers=control_headers)
     if token:
         # First visit arrived with ?token=… — move the credential into an HttpOnly
         # cookie so SSE and future page loads never carry it in the URL (browser

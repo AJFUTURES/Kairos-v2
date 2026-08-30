@@ -13,6 +13,8 @@ Supported instruments: **MNQ / NQ, MES / ES, MGC / GC, CL** (micro and full-size
 
 This repository contains the **complete sanitized product**: the full v7 Pine indicator, execution bot, risk controls, adaptive sizing, dashboard, analytics, deployment helpers, and documentation. It deliberately excludes credentials, live account state, logs, results, and private business material.
 
+**New customer:** follow [HOW-TO-USE.md](HOW-TO-USE.md) from private-repository access through Practice-account acceptance testing. [AGENTS.md](AGENTS.md) explains the architecture, code navigation, safe customization, and how to work with an AI coding assistant without exposing keys or accidentally starting the bot.
+
 ---
 
 ## Complete feature guide
@@ -91,7 +93,7 @@ This repository contains the **complete sanitized product**: the full v7 Pine in
 - **Python 3.10+** (dependencies in `requirements.txt`: FastAPI, Uvicorn, httpx, websockets, python-dotenv, certifi)
 - **A TradingView account with alert/webhook capability** (webhook alerts require a paid TradingView plan)
 - **ProjectX / TopstepX API access** — an account on a ProjectX-powered platform (e.g. TopstepX) with API access enabled
-- **A publicly reachable HTTPS URL** for the webhook — the bot binds to `127.0.0.1:8000`, so you need a tunnel (Cloudflare Tunnel is what the included scripts assume) or a server with a reverse proxy
+- **A publicly reachable HTTPS URL** for the webhook — the bot stays on `127.0.0.1:8000`; the customer guide uses Cloudflare Tunnel from the same permitted personal device
 
 ## Getting your ProjectX credentials
 
@@ -105,14 +107,14 @@ This repository contains the **complete sanitized product**: the full v7 Pine in
 # 1. Clone / download this repository
 git clone <your-repo-url> KAIROS && cd KAIROS
 
-# 2. Create a virtual environment and install dependencies
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# 3. Configure your environment
+# 2. Configure your environment
 cp .env.example .env
 # then open .env and fill in every REQUIRED value
+
+# 3. Safe preflight — creates venv and installs dependencies automatically;
+#    it does not start the tunnel, connect to the broker, or place an order
+chmod +x start.sh bot.sh
+./start.sh --check
 ```
 
 ### .env variables
@@ -121,9 +123,10 @@ cp .env.example .env
 |---|---|---|
 | `PROJECT_X_USERNAME` | ✅ | Your ProjectX/TopstepX platform username |
 | `PROJECT_X_API_KEY` | ✅ | Your ProjectX API key |
-| `PROJECT_X_ACCOUNT_ID` | ✅ | The account name/ID the bot trades by default |
+| `PROJECT_X_ACCOUNT_ID` | ✅ | The exact active account name; KAIROS resolves its numeric broker ID |
 | `WEBHOOK_SECRET` | ✅ | A long random string; every TradingView alert must include it — the bot rejects anything else |
 | `DASHBOARD_TOKEN` | ✅ | A second long random string; required to open the dashboard and call control endpoints |
+| `KAIROS_PUBLIC_URL` | optional | Stable Cloudflare HTTPS origin; lets the launcher print exact webhook/dashboard links |
 | `DISCORD_WEBHOOK_URL` | optional | Discord webhook for trade notifications |
 | `DISCORD_MENTION` | optional | `everyone`, `here`, or a numeric user ID to ping on A+ / auto-pause alerts |
 | `TELEGRAM_BOT_TOKEN` | optional | Telegram bot token (from @BotFather) |
@@ -140,13 +143,13 @@ The bot **refuses to start** if any required variable is missing.
 ## Running the bot
 
 ```bash
-./start.sh          # foreground — Ctrl+C stops the bot
+./start.sh          # foreground — validates/setup, starts tunnel if configured, then bot
 # or
 ./bot.sh start      # macOS background service via launchd (survives Terminal close & reboot)
 ./bot.sh status|logs|stop
 ```
 
-Or directly: `./venv/bin/python main.py`. The bot listens on `127.0.0.1:8000`:
+The recommended macOS one-click launcher is a customer-created `KAIROS.command`; its exact contents and permission steps are in [HOW-TO-USE.md](HOW-TO-USE.md) and [AGENTS.md](AGENTS.md). It is deliberately ignored and not distributed. The bot listens on `127.0.0.1:8000`:
 
 - `POST /webhook` — TradingView alerts come in here
 - `GET /dashboard?token=<DASHBOARD_TOKEN>` — live control panel
@@ -220,14 +223,18 @@ While adaptive mode is on it also uses a **fixed per-instrument stop/target** (p
 main.py            The bot — webhook, filters, execution, dashboard API
 adaptive_sizing.py Adaptive position-sizing ladder engine (pure, opt-in)
 alertbot.pine      Complete v7 TradingView indicator + webhook payloads
+HOW-TO-USE.md      Customer installation, tunnel, alert and one-click guide
+AGENTS.md           Architecture/code map and safe AI-assistant instructions
+CHANGELOG.md        Customer release history
 requirements.txt   Python dependencies
-start.sh           Foreground runner (macOS/Linux)
+start.sh           Foreground bootstrap, preflight, tunnel and bot launcher
 bot.sh             macOS launchd background service manager
 web/               Dashboard + login pages served by the bot
 site/              Static landing page (optional, e.g. Cloudflare Pages)
 deploy/            systemd units + cloud/tunnel deployment guides
 Analytics/         Trade-analytics dashboard generator (reads results.txt)
 assets/            README screenshots
+tests/             Unit and sanitized-release contract checks
 .env.example       Template for your .env
 ```
 

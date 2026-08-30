@@ -8,6 +8,9 @@ kairos.log
 trade_logs.txt
 results.txt
 Analytics/kairos_analytics.html
+.kairos.pid
+.kairos-tunnel.pid
+*.command
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/

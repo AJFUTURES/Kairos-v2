@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-31 — Customer self-service and one-click readiness
+
+- Added `HOW-TO-USE.md`, a complete private-access, credentials, Cloudflare, TradingView, Practice-test, one-click launch, daily-use and troubleshooting walkthrough.
+- Added customer-facing `AGENTS.md` with architecture, repository navigation, code entry points, safety rules, verification and AI-assistant prompts.
+- Documented the personal macOS `KAIROS.command` launcher in both guides while deliberately excluding and ignoring `*.command` files.
+- Made `start.sh` bootstrap the virtual environment and pinned dependencies, validate keys without printing them, support a no-broker `--check`, start a configured tunnel, and handle paths containing spaces.
+- Made both launch scripts executable and removed broad process/port kills; KAIROS now stops only its own path-verified PID and refuses to terminate an unknown application.
+- Clarified that `PROJECT_X_ACCOUNT_ID` expects the exact active account name, added optional `KAIROS_PUBLIC_URL`, and expanded release tests for the customer-launch contract.
+- Added no-store, no-referrer, anti-frame and MIME-sniffing protection headers to dashboard/login responses.
+
 ## 2026-08-30 — Comprehensive private-review release
 
 - Replaced the reference Pine indicator with the complete sanitized v7 signal and visual suite.

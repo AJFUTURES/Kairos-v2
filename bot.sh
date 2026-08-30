@@ -26,6 +26,7 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 GUI="gui/$(id -u)"
 DIR="$(cd "$(dirname "$0")" && pwd)"              # self-locating: survives folder moves
 LOG="$DIR/kairos.log"
+BOT_PID_FILE="$DIR/.kairos.pid"
 
 write_plist () {
   # (Re)write the launchd plist on EVERY start so the service definition can
@@ -63,25 +64,55 @@ write_plist () {
 EOF
 }
 
-kill_stray_bot () {
-  # Stop any bot started via ./start.sh (foreground) so we never double-run.
-  pkill -f "caffeinate -is .*main.py" 2>/dev/null || true
-  pkill -f "venv/bin/python main.py" 2>/dev/null || true
-  for _ in $(seq 1 20); do pgrep -f "main.py" >/dev/null 2>&1 || break; sleep 0.5; done
-  lsof -ti tcp:8000 -sTCP:LISTEN | xargs kill -9 2>/dev/null || true
+port_busy () {
+  lsof -ti tcp:8000 -sTCP:LISTEN >/dev/null 2>&1
+}
+
+stop_foreground_kairos () {
+  # Stop only the exact foreground process recorded by this repository. A stale
+  # PID may have been recycled by macOS, so its command must contain this venv path
+  # and main.py before we send any signal.
+  [ -f "$BOT_PID_FILE" ] || return 0
+  pid="$(cat "$BOT_PID_FILE" 2>/dev/null || true)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+    case "$cmd" in
+      *"$DIR/venv/bin/python"*main.py*)
+        kill "$pid" 2>/dev/null || true
+        for _ in $(seq 1 20); do
+          kill -0 "$pid" 2>/dev/null || break
+          sleep 0.25
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+          echo "foreground KAIROS PID $pid did not stop; refusing to continue."
+          return 1
+        fi
+        ;;
+      *)
+        echo "ignoring stale .kairos.pid; PID $pid is not this KAIROS."
+        ;;
+    esac
+  fi
+  rm -f "$BOT_PID_FILE"
 }
 
 case "${1:-}" in
   start)
+    echo "▸ Running KAIROS preflight..."
+    "$DIR/start.sh" --check || exit 1
     echo "▸ Ensuring the Cloudflare tunnel is up..."
-    launchctl list 2>/dev/null | grep -q com.kairos.cloudflared \
+    launchctl list 2>/dev/null | grep -Eq 'com\.(kairos|cloudflare)\.cloudflared' \
       || launchctl load -w "$HOME/Library/LaunchAgents/com.kairos.cloudflared.plist" 2>/dev/null || true
-    echo "▸ Clearing any foreground (start.sh) bot..."
-    kill_stray_bot
+    echo "▸ Stopping any existing KAIROS service/foreground process..."
+    launchctl bootout "$GUI/$LABEL" 2>/dev/null || true
+    stop_foreground_kairos || exit 1
+    if port_busy; then
+      echo "port 8000 is occupied by an unknown application; KAIROS will not kill it."
+      exit 1
+    fi
     echo "▸ Writing a fresh service definition (KeepAlive: auto-restart on any exit)..."
     write_plist
     echo "▸ Starting bot as background service ($LABEL)..."
-    launchctl bootout "$GUI/$LABEL" 2>/dev/null || true
     launchctl bootstrap "$GUI" "$PLIST"
     sleep 1
     "$0" status
@@ -89,7 +120,10 @@ case "${1:-}" in
   stop)
     echo "▸ Stopping bot service (won't auto-start on reboot)..."
     launchctl bootout "$GUI/$LABEL" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null || true
-    lsof -ti tcp:8000 -sTCP:LISTEN | xargs kill -9 2>/dev/null || true
+    stop_foreground_kairos || true
+    if port_busy; then
+      echo "  warning: port 8000 remains occupied by an unrecognized application."
+    fi
     echo "  stopped."
     ;;
   restart)
@@ -98,8 +132,16 @@ case "${1:-}" in
   status)
     if launchctl print "$GUI/$LABEL" >/dev/null 2>&1; then echo "service : LOADED ($LABEL)"; else echo "service : not loaded"; fi
     if lsof -ti tcp:8000 -sTCP:LISTEN >/dev/null 2>&1; then echo "bot     : RUNNING on 127.0.0.1:8000"; else echo "bot     : not listening on :8000"; fi
-    if launchctl list 2>/dev/null | grep -q com.kairos.cloudflared; then echo "tunnel  : running (always-on)"; else echo "tunnel  : NOT running"; fi
-    echo "public  : https://your-domain.example   (dashboard /dashboard, webhook /webhook)"
+    if launchctl list 2>/dev/null | grep -Eq 'com\.(kairos|cloudflare)\.cloudflared'; then echo "tunnel  : running (always-on)"; else echo "tunnel  : NOT running"; fi
+    public_url=""
+    if [ -x "$DIR/venv/bin/python" ] && [ -f "$DIR/.env" ]; then
+      public_url="$(cd "$DIR" && "$DIR/venv/bin/python" -c 'from dotenv import dotenv_values; print(str(dotenv_values(".env").get("KAIROS_PUBLIC_URL") or "").strip().rstrip("/"))')"
+    fi
+    if [ -n "$public_url" ]; then
+      echo "public  : $public_url   (dashboard /dashboard, webhook /webhook)"
+    else
+      echo "public  : not configured (set KAIROS_PUBLIC_URL in .env)"
+    fi
     ;;
   logs)
     tail -f "$LOG"
