@@ -725,13 +725,13 @@
     <!-- A+ SETUPS -->
     <div class="card" data-card="aplus">
       <div class="card-head card-toggle" onclick="toggleCard(this)">
-        <span class="ch-left"><span class="card-title">A+ Setups</span><span class="card-hint" id="aplus-hint">structural · FVG-edge</span></span>
+        <span class="ch-left"><span class="card-title">A+ Setups</span><span class="card-hint" id="aplus-hint">session sweep · C1→swing</span></span>
         <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
       </div>
       <div class="card-body">
       <div class="trade-settings">
         <label class="ts-row ts-check">
-          <span class="ts-label">Take A+ trades <span class="ts-sub">master switch &middot; off = skip A+ signals</span></span>
+          <span class="ts-label">Take A+ trades <span class="ts-sub">session H/L sweep + strict candle-3 IFVG</span></span>
           <input type="checkbox" id="ap-enabled" onchange="setAplus('aplus_enabled', this.checked)">
         </label>
         <div class="ts-section">Fallback TP <span class="ts-sub" style="text-transform:none;letter-spacing:0">used only if Pine sends no FVG level</span></div>
@@ -1303,7 +1303,7 @@ function syncAplus(){
   set('ap-tp-sp',    ts.aplus_tp_spgold      ?? 15);
   set('ap-max',      ts.aplus_max_session    ?? 0);
   const hint=document.getElementById('aplus-hint');
-  if(hint){ hint.textContent=(ts.aplus_enabled!==false)?'structural · FVG-edge':'OFF';
+  if(hint){ hint.textContent=(ts.aplus_enabled!==false)?'session sweep · C1→swing':'OFF';
             hint.style.color=(ts.aplus_enabled!==false)?'':'var(--yellow)'; }
 }
 

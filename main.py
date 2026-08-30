@@ -391,8 +391,9 @@ CRUDE_TP_PTS  = 0.8
 SAFETY_NET_PTS = {"MNQ": 40, "NQ": 40, "MES": 20, "ES": 20, "MGC": 20, "GC": 20, "CL": 1.5}
 
 # ─── A+ Setups — dashboard-editable settings (the "A+ Setups" card) ───────────
-# A+ trades take a structural stop and a TP that rides to the near edge of the
-# unfilled HTF FVG (a_plus_target from Pine). These defaults back every A+ control;
+# A+ trades attach candle-1 protection, transition the filled runner to swing H/L,
+# and target the near edge of an unfilled HTF FVG when Pine supplies one.
+# These defaults back every A+ control;
 # the live values live in trade_settings, validated by _coerce_aplus().
 #   aplus_enabled        : master switch — when OFF, A+-flagged signals are skipped.
 #   aplus_tp_nasdaq      : fixed TP (pts) for NQ/MNQ when Pine sends no usable FVG level.
@@ -1802,7 +1803,7 @@ async def fetch_bracket_prices(client, token, account_id, symbol, orders: list =
 
 
 async def enforce_bracket_levels(client, token, account_id, symbol, sl_abs, tp_abs,
-                                 orders: list = None):
+                                 orders: list = None, require_all_stops: bool = False):
     """Force EVERY open stop → sl_abs and EVERY open TP (limit) → tp_abs for this
     instrument, so all stacked contracts sit on entry 1's EXACT levels regardless of
     fill slippage. This is the reliable replacement for tick-offset inheritance:
@@ -1811,7 +1812,7 @@ async def enforce_bracket_levels(client, token, account_id, symbol, sl_abs, tp_a
     orders), and `orders` lets the caller pass an existing searchOpen snapshot."""
     cid = (contracts.get(symbol) or {}).get("id")
     if not cid or sl_abs is None:
-        return
+        return 0
     tick = (contracts.get(symbol) or {}).get("tick") or 0.25
     sl_r = round(round(sl_abs / tick) * tick, 10)
     tp_r = round(round(tp_abs / tick) * tick, 10) if tp_abs is not None else None
@@ -1823,9 +1824,9 @@ async def enforce_bracket_levels(client, token, account_id, symbol, sl_abs, tp_a
             if not isinstance(o, dict) or o.get("contractId") != cid or o.get("status") not in (1, 6):
                 continue
             if o.get("type") == 4:      # Stop (SL) → stopPrice
-                bodies.append({"accountId": account_id, "orderId": o["id"], "stopPrice": sl_r})
+                bodies.append(({"accountId": account_id, "orderId": o["id"], "stopPrice": sl_r}, True))
             elif o.get("type") == 1 and tp_r is not None:    # Limit (TP) → limitPrice (skip when no TP given)
-                bodies.append({"accountId": account_id, "orderId": o["id"], "limitPrice": tp_r})
+                bodies.append(({"accountId": account_id, "orderId": o["id"], "limitPrice": tp_r}, False))
 
         async def _modify(body):
             try:
@@ -1838,16 +1839,22 @@ async def enforce_bracket_levels(client, token, account_id, symbol, sl_abs, tp_a
             except Exception:
                 return False
 
-        results = await asyncio.gather(*(_modify(b) for b in bodies)) if bodies else []
+        results = await asyncio.gather(*(_modify(b) for b, _ in bodies)) if bodies else []
         moved   = sum(1 for ok in results if ok)
+        stop_total = sum(1 for _, is_stop in bodies if is_stop)
+        stop_moved = sum(1 for ok, (_, is_stop) in zip(results, bodies) if ok and is_stop)
         if moved:
             await alog(
                 f"{symbol} INHERIT | unified {moved} bracket order(s) → SL {sl_r} / TP {tp_r}",
                 "system",
                 feed_msg=f"{symbol} SL/TP inherited",
             )
+        if require_all_stops:
+            return stop_total > 0 and stop_moved == stop_total
+        return moved
     except Exception as e:
         await alog(f"enforce_bracket_levels error for {symbol}: {e}", "warning")
+        return 0
 
 
 async def place_stop_order(client, token, account_id, symbol, stop_price, pos_side, size):
@@ -2054,10 +2061,10 @@ async def place_order(client, token, account_id, symbol, side, current_size,
     def pts_to_ticks(pts):
         return max(MIN_SL_TICKS, round(pts / tick))
 
-    # A+ setups take a STRUCTURAL stop (the two-phase candle-1 IFVG stop) regardless
-    # of the live stop mode, and a TP that rides to the near edge of the unfilled HTF
-    # FVG the setup targets (a_plus_target from Pine) — see the TP block below. Swing
-    # is force-disabled for A+.
+    # A+ setups attach the strict candle-1 low/high as the entry bracket's first
+    # protective stop, then transition that filled bracket to the Pine-provided
+    # swing low/high. This is independent of the dashboard stop mode. The target
+    # rides to the near edge of a fresh HTF FVG when Pine supplies one.
     structural = True if a_plus else bool(trade_settings.get("structural_sl"))
     safety_pts = SAFETY_NET_PTS.get(symbol, 40)
     struct_tp  = trade_settings.get("structural_tp", "3x")
@@ -2069,8 +2076,8 @@ async def place_order(client, token, account_id, symbol, side, current_size,
                  "TP.1" if symbol in TP1_SYMBOLS else "TP.2")
 
     # ── Two-phase structural SL — ONE level: the IFVG invalidation level ───────
-    # That level is candle-1's HIGH for a long, candle-1's LOW for a short — i.e.
-    # exactly what the alert already sends as sl_price (high[1] / low[1]). The PHASE
+    # That level is candle-1's LOW for a long and candle-1's HIGH for a short —
+    # exactly what the strict candle-3 alert sends as sl_price. The PHASE
     # only changes the trigger, never the level:
     #   Phase 1 (entry candle): a HARD broker stop sitting AT the level. Any touch
     #     through it = out — if price slips back through the IFVG level inside the
@@ -2111,6 +2118,8 @@ async def place_order(client, token, account_id, symbol, side, current_size,
             _swing_used = True
         elif _candle_ok:
             _two_phase = True; _hard_level = _close_level = _candle_level
+
+    _aplus_swing_transition = bool(a_plus and _two_phase and _swing_ok)
 
     # ── SL ────────────────────────────────────────────────────────────────────
     if _swing_used and current_size == 0:
@@ -2283,6 +2292,7 @@ async def place_order(client, token, account_id, symbol, side, current_size,
                     "phase":        1 if _two_phase else 2,
                     "side":         side,
                     "entry_bucket": _candle_bucket(timeframe or "", time.time()),
+                    "aplus_swing":  _swing_level if _aplus_swing_transition else None,
                 }
             else:
                 structural_pos.pop(symbol, None)
@@ -2301,16 +2311,17 @@ async def place_order(client, token, account_id, symbol, side, current_size,
             feed_msg=f"{symbol} {direction} · {new_size}/{_cap} · SL {sl_pts} TP {tp_pts}",
         )
 
-        # A+ setup → instant push alert (Discord + Telegram, whichever is configured;
-        # swing stop, allowed to exceed the max-stop cap). No-op if no channel is set.
+        # A+ setup → instant push alert (Discord + Telegram, whichever is configured).
+        # Initial protection is candle 1; the filled bracket then moves to swing H/L.
         if a_plus:
             _aptxt = (f"🅰️ A+ SETUP TAKEN\n{symbol} {direction} x{_qty} @ ~{_est_entry}\n"
-                      f"Structural SL {sl_pts}pt · TP {tp_pts}pt [{tp_source}]\n"
+                      f"Initial candle-1 SL {sl_pts}pt → swing {swing_sl} · TP {tp_pts}pt [{tp_source}]\n"
                       f"{(ifvg_info + ' · ') if ifvg_info else ''}{now_ny()} NY")
             asyncio.create_task(notify_push(_aptxt, mention=True, embed=_embed(
                 f"🅰️ A+ Setup Taken — {symbol} {direction}", "aplus",
                 fields=[("Size", f"{_qty}"), ("Entry", f"~{_est_entry}"),
-                        ("Structural SL", f"{sl_pts}pt"), ("TP", f"{tp_pts}pt")],
+                        ("Initial SL", f"{sl_pts}pt"), ("Runner stop", f"{swing_sl}"),
+                        ("TP", f"{tp_pts}pt")],
                 footer=f"{ifvg_info or 'IFVG'} · {now_ny()} NY")))
 
         # Add to trade log — entry-time row. Outcome + P&L are filled on close.
@@ -2322,7 +2333,7 @@ async def place_order(client, token, account_id, symbol, side, current_size,
             "direction":   direction,
             "size":        f"{_qty}",
             "ifvg_source": ifvg_info or "—",
-            "stop_mode":   ("A+ structural" if a_plus else _stop_mode_label(trade_settings)),
+            "stop_mode":   ("A+ candle1→swing" if a_plus else _stop_mode_label(trade_settings)),
             "a_plus":      bool(a_plus),
             "sl_tp":       f"{sl_pts}pt / {tp_pts}pt",
             "sl_pts":      sl_pts,
@@ -2363,17 +2374,40 @@ async def place_order(client, token, account_id, symbol, side, current_size,
         # The attached bracket is a tick offset off an ESTIMATED entry; correct it to
         # the real candle-1 price (and re-derive the TP off the exact hard distance
         # for 2x/3x) so the phase-1 stop sits precisely where the rule wants it.
+        _phase1_tp_abs = None
         if _two_phase and current_size == 0 and _orders_snap is not None and _hard_level is not None:
             _fill = (positions.get(symbol) or {}).get("avg_price") or _est_entry
             if _fill is not None:
                 _m = STRUCT_TP_MULT.get(struct_tp)
-                if _m:
+                if a_plus:
+                    _tp_abs = _fill + tp_pts if side == 0 else _fill - tp_pts
+                elif _m:
                     _hard_dist = abs(_fill - _hard_level)
                     _tp_abs = _fill + _m * _hard_dist if side == 0 else _fill - _m * _hard_dist
                 else:
                     _tp_abs = _fill + tp_pts if side == 0 else _fill - tp_pts
+                _phase1_tp_abs = _tp_abs
                 await enforce_bracket_levels(client, token, account_id, symbol,
                                              _hard_level, _tp_abs, orders=_orders_snap)
+                _orders_snap = await search_open_orders(client, token, account_id)
+
+        # Candle 3 has already closed before Pine can emit the strict alert. The
+        # attached candle-1 stop protects order creation/fill; once the bracket is
+        # visible, move the A+ runner to its 15-bar swing low/high while preserving TP.
+        # If the broker modify fails, structural_monitor_loop retains the initial
+        # hard stop and retries the transition on the next confirmed boundary.
+        if (_aplus_swing_transition and current_size == 0 and _orders_snap is not None
+                and _swing_level is not None):
+            _moved = await enforce_bracket_levels(
+                client, token, account_id, symbol, _swing_level, _phase1_tp_abs,
+                orders=_orders_snap, require_all_stops=True)
+            if _moved:
+                structural_pos.pop(symbol, None)  # swing hard stop now owns the exit
+                _stamp_open_rows(symbol, reached_phase2=True)
+                await alog(
+                    f"A+ RUNNER | {symbol} | candle-3 confirmed · SL moved from "
+                    f"candle-1 {_hard_level} to swing {_swing_level}",
+                    "system", feed_msg=f"A+ swing armed · {symbol}")
                 _orders_snap = await search_open_orders(client, token, account_id)
 
         # ── Stacked entry: force EVERY bracket to entry-1's EXACT SL/TP ────────
@@ -3469,7 +3503,7 @@ async def be_monitor_loop():
 
 async def structural_monitor_loop():
     """Self-contained close-based structural exit. For every structural position that
-    carries a stored IFVG invalidation level (candle-1 HIGH for a long, candle-1 LOW
+    carries a stored IFVG invalidation level (candle-1 LOW for a long, candle-1 HIGH
     for a short — the same level the phase-1 hard stop sat at), this watches the live
     quote stream and, at each close of a candle on the ENTRY timeframe, flattens if
     that candle CLOSED beyond the level (long → close below the level; short → close
@@ -3527,9 +3561,44 @@ async def structural_monitor_loop():
                 # STRUCTURAL → remove the candle-1 hard stop and hand over to the
                 #           close-based exit below (unless auto-BE already set BE).
                 if st.get("two_phase") and st.get("phase") == 1:
+                    _be_fired = bool((be_state.get(symbol) or {}).get("be_triggered"))
+                    _aplus_swing = st.get("aplus_swing")
+
+                    # A+ fallback/retry: strict Pine alerts arrive only after candle 3
+                    # closes. Normally place_order moves the filled bracket to this
+                    # swing immediately; if that broker modify failed, keep the
+                    # candle-1 stop live and retry here. Never widen a stop already at BE.
+                    if _aplus_swing is not None:
+                        if _be_fired:
+                            structural_pos.pop(symbol, None)
+                            _stamp_open_rows(symbol, reached_phase2=True)
+                            await alog(
+                                f"A+ RUNNER | {symbol} | break-even already active — swing transition skipped",
+                                "system", feed_msg=f"A+ BE held · {symbol}")
+                            continue
+                        try:
+                            async with api_client() as client:
+                                token, account_id = await get_auth(client)
+                                if token and account_id:
+                                    sl_orders = await search_open_orders(client, token, account_id)
+                                    moved = await enforce_bracket_levels(
+                                        client, token, account_id, symbol, _aplus_swing, None,
+                                        orders=sl_orders, require_all_stops=True)
+                                    if moved:
+                                        structural_pos.pop(symbol, None)
+                                        _stamp_open_rows(symbol, reached_phase2=True)
+                                        await alog(
+                                            f"A+ RUNNER | {symbol} | retry succeeded · SL moved to swing {_aplus_swing}",
+                                            "system", feed_msg=f"A+ swing armed · {symbol}")
+                                        continue
+                        except Exception:
+                            pass
+                        # Broker still has the candle-1 stop; leave phase 1 armed and
+                        # retry at the next boundary instead of removing protection.
+                        continue
+
                     st["phase"] = 2
                     _stamp_open_rows(symbol, reached_phase2=True)   # survived entry candle
-                    _be_fired = bool((be_state.get(symbol) or {}).get("be_triggered"))
                     # Remove the candle-1 hard stop → close-based exit, unless auto-BE
                     # already set break-even inside the entry candle.
                     if not _be_fired:
@@ -3777,8 +3846,8 @@ async def receive_webhook(request: Request):
             return {"status": f"{sym} exit received"}
         return {"status": "ignored — exit could not resolve a symbol"}
 
-    # Structural SL fields from Pine Script. sl_price = candle-1 close-invalidation
-    # level (high[1] for bullish, low[1] for bearish). c1_high/c1_low = candle-1's
+    # Structural SL fields from strict candle-3 Pine. sl_price = candle-1 protection
+    # level (low for bullish, high for bearish). c1_high/c1_low = candle-1's
     # full range, needed for the two-phase hard stop (see place_order). When the
     # alert omits c1_high/c1_low the bot falls back to the single-phase safety net.
     def _f(v):
@@ -3792,7 +3861,7 @@ async def receive_webhook(request: Request):
     c1_low    = _f(payload.get("c1_low"))
     swing_sl  = _f(payload.get("swing_sl"))    # 15-bar low (long) / high (short), from Pine
     imbalance = _f(payload.get("imbalance"))   # inverted-FVG gap size in TICKS (from Pine)
-    a_plus    = bool(payload.get("a_plus"))     # A+ setup flag from Pine (toward unfilled HTF FVG, ±15m of hour)
+    a_plus    = bool(payload.get("a_plus"))     # session H/L sweep followed by strict candle-3 IFVG
     a_plus_target = _f(payload.get("a_plus_target"))   # near edge of that unfilled HTF FVG — the A+ TP
     # (Pine sends "0" when no usable level exists; place_order then falls back to the
     #  fixed A+ TP distance — 50pt NQ/MNQ, 15pt the S&P/Gold group.)
@@ -3893,10 +3962,10 @@ async def receive_webhook(request: Request):
             return {"status": f"ignored — {target_symbol} {bias_for(target_symbol)}-only"}
 
     # ── Max stop-distance cap — skip trades whose swing stop is too wide ───────
-    # Applies to Swing mode only (the trade risks the full 15-bar swing distance).
-    # A+ setups bypass this cap (they ride the tight structural candle-1 stop).
-    if (action in ("buy", "sell") and not a_plus
-            and trade_settings.get("swing_stop")
+    # Applies to ordinary Swing mode and A+ candle1→swing runners: both ultimately
+    # risk the full swing distance, so A+ must not bypass this safety rail.
+    if (action in ("buy", "sell")
+            and (trade_settings.get("swing_stop") or a_plus)
             and swing_sl is not None and entry_ref is not None):
         _cap = max_stop_ticks_for(target_symbol)
         if _cap > 0:
