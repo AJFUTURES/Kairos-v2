@@ -71,7 +71,7 @@ local-only and ignored by Git.
   A+ defaults, cooldowns and adaptive defaults are in the constants/settings sections.
 - `receive_webhook()` authenticates and parses TradingView payloads, then applies
   symbol, A+, time, imbalance, direction and maximum-stop filters.
-- `execute_trade()` owns serialized exposure decisions: ignore, open, stack, or block.
+- `execute_trade()` owns serialized exposure decisions: ignore, open, or block; same-direction signals never stack.
 - `place_order()` calculates quantities and brackets, implements structural/swing/A+
   protection, places the order, arms break-even, and records the trade.
 - `structural_monitor_loop()`, `be_monitor_loop()` and orphan/hedge reconciliation

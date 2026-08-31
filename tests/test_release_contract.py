@@ -48,6 +48,20 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn("stop_total > 0 and stop_moved == stop_total", bot)
         self.assertIn('(trade_settings.get("swing_stop") or a_plus)', bot)
 
+    def test_normal_execution_never_stacks_and_sizing_matches(self):
+        bot = (ROOT / "main.py").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("Same-side position → IGNORE", bot)
+        self.assertIn("no stacking", bot)
+        self.assertNotRegex(bot, r'"max_entries"\s*:\s*[2-9]')
+        self.assertRegex(
+            bot,
+            r"def max_contracts_for\(symbol: str\) -> int:\s+"
+            r"s = active_sizing\(\)\.get\(symbol, _DEFAULT_SIZING\)\s+"
+            r'return s\["qty"\]',
+        )
+        self.assertIn("**No stacking or automatic reversal**", readme)
+
     def test_dashboard_control_pages_have_security_headers(self):
         bot = (ROOT / "main.py").read_text(encoding="utf-8")
         for header in (

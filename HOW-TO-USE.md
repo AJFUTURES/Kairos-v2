@@ -31,6 +31,10 @@ The code package can be shared only after the owner completes these release acti
 
 - Decide and add the intended software license/customer-use terms. With no `LICENSE`
   file, the repository does not grant customers clear redistribution/modification rights.
+- Decide whether to retain the current clean-state trading defaults: the bot starts
+  unpaused with MNQ enabled and Custom sizing (5 MNQ contracts). The guide prevents
+  alerts until dashboard review, but a more conservative paused/50K default is an
+  owner product decision.
 - Compile the exact committed `alertbot.pine` in TradingView and recreate its alert.
 - Complete the Practice-account acceptance test in this guide on a personal Mac.
 - Keep the GitHub repository private, then invite the customer's exact GitHub account;

@@ -9,6 +9,7 @@
 - Made both launch scripts executable and removed broad process/port kills; KAIROS now stops only its own path-verified PID and refuses to terminate an unknown application.
 - Clarified that `PROJECT_X_ACCOUNT_ID` expects the exact active account name, added optional `KAIROS_PUBLIC_URL`, and expanded release tests for the customer-launch contract.
 - Added no-store, no-referrer, anti-frame and MIME-sniffing protection headers to dashboard/login responses.
+- Aligned sizing summaries and dashboard limits with actual execution: same-direction signals never stack, so displayed maximum size now equals the single fresh-position quantity.
 
 ## 2026-08-30 — Comprehensive private-review release
 

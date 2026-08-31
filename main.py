@@ -559,18 +559,19 @@ PRESET_NAME_MAX = 40               # max characters in a preset name
 # executes if its instrument is in this list. (Persisted.)
 enabled_symbols = ["MNQ"]   # subset of INSTRUMENTS
 
-# Per-instrument position sizing: contracts PER ENTRY × max stacked entries.
-# Each same-direction signal adds one entry (of `qty`) until the instrument's cap.
+# Per-instrument position sizing. `qty` is the complete fresh-position size.
+# Same-direction signals are ignored while a position is open, so max_entries is
+# retained only for backward-compatible state/table shape and is always treated as 1.
 SIZING = {
-    "MNQ": {"qty": 5, "max_entries": 2},   # 5×2 = 10 contracts max
-    "MES": {"qty": 5, "max_entries": 2},   # 5×2 = 10 contracts max
-    "MGC": {"qty": 3, "max_entries": 2},   # 3×2 = 6 contracts max
-    "NQ":  {"qty": 1, "max_entries": 2},   # 1×2 = 2 contracts max
-    "ES":  {"qty": 1, "max_entries": 1},   # 1×1 = 1 contract max
-    "GC":  {"qty": 1, "max_entries": 3},   # full-size Gold ($100/pt) — conservative
-    "CL":  {"qty": 1, "max_entries": 1},   # full-size Crude ($10/tick) — 1, no stacking
+    "MNQ": {"qty": 5, "max_entries": 1},
+    "MES": {"qty": 5, "max_entries": 1},
+    "MGC": {"qty": 3, "max_entries": 1},
+    "NQ":  {"qty": 1, "max_entries": 1},
+    "ES":  {"qty": 1, "max_entries": 1},
+    "GC":  {"qty": 1, "max_entries": 1},
+    "CL":  {"qty": 1, "max_entries": 1},
 }
-_DEFAULT_SIZING = {"qty": 2, "max_entries": 4}   # any unlisted instrument defaults to micro sizing
+_DEFAULT_SIZING = {"qty": 2, "max_entries": 1}   # unlisted instruments still never stack
 
 # ─── Account-size risk presets ────────────────────────────────────────────────
 # Selecting a prop-firm account size in the dashboard switches ALL per-instrument
@@ -583,20 +584,10 @@ _DEFAULT_SIZING = {"qty": 2, "max_entries": 4}   # any unlisted instrument defau
 # alone = the entire 50K drawdown) and should generally stay disabled on these
 # accounts. "all open at once" worst case: 50K ≈ $640 (32% of DD), 100K ≈ $1,100.
 #
-# Two independent knobs (same model as SIZING above):
-#   • qty         = contracts the FIRST signal opens — the per-position base size
-#                   (this is the order payload "size":_qty in place_order). This is
-#                   what a single trade executes regardless of the Stacking toggle.
-#   • max_entries = how many entries may stack when Stacking is ON. Each extra
-#                   same-direction signal adds another `qty`, up to qty×max_entries.
-# So the count the user wants per trade lives in `qty`; stacking depth lives in
-# `max_entries`. Per-size intent (MICROS only — MNQ/MES/MGC):
-#   50k  → 1 contract, NO stacking            (qty 1 × 1 =  1)
-#   100k → 2 base, stacks to 2 entries        (qty 2 × 2 =  4)
-#   150k → 3 base, stacks to 3 entries        (qty 3 × 3 =  9)
-# The full-size index/gold/crude contracts (NQ/ES/GC/CL) are HARD-CAPPED at 1 contract on
-# every account size, stacking or not (qty 1 × 1 = 1) — one of their safety-net
-# stops alone is a large slice of the drawdown, so they never scale or stack.
+# `qty` is the complete fresh-position size. There is no stacking: every further
+# same-direction signal is ignored until the instrument is flat. Per-size micro intent:
+#   50k → 1 contract · 100k → 2 contracts · 150k → 3 contracts.
+# Full-size NQ/ES/GC/CL remain hard-capped at one contract.
 ACCOUNT_SIZE_PRESETS = {
     "50k": {                                    # micros 1, no stacking
         "MNQ": {"qty": 1, "max_entries": 1},
@@ -607,19 +598,19 @@ ACCOUNT_SIZE_PRESETS = {
         "GC":  {"qty": 1, "max_entries": 1},    # full-size: hard cap 1
         "CL":  {"qty": 1, "max_entries": 1},    # full-size: hard cap 1
     },
-    "100k": {                                   # micros 2/entry, stack to 4 (2×2)
-        "MNQ": {"qty": 2, "max_entries": 2},
-        "MES": {"qty": 2, "max_entries": 2},
-        "MGC": {"qty": 2, "max_entries": 2},
+    "100k": {                                   # micros 2 per fresh position
+        "MNQ": {"qty": 2, "max_entries": 1},
+        "MES": {"qty": 2, "max_entries": 1},
+        "MGC": {"qty": 2, "max_entries": 1},
         "NQ":  {"qty": 1, "max_entries": 1},    # full-size: hard cap 1
         "ES":  {"qty": 1, "max_entries": 1},    # full-size: hard cap 1
         "GC":  {"qty": 1, "max_entries": 1},    # full-size: hard cap 1
         "CL":  {"qty": 1, "max_entries": 1},    # full-size: hard cap 1
     },
-    "150k": {                                   # micros 3/entry, stack to 9 (3×3)
-        "MNQ": {"qty": 3, "max_entries": 3},
-        "MES": {"qty": 3, "max_entries": 3},
-        "MGC": {"qty": 3, "max_entries": 3},
+    "150k": {                                   # micros 3 per fresh position
+        "MNQ": {"qty": 3, "max_entries": 1},
+        "MES": {"qty": 3, "max_entries": 1},
+        "MGC": {"qty": 3, "max_entries": 1},
         "NQ":  {"qty": 1, "max_entries": 1},    # full-size: hard cap 1
         "ES":  {"qty": 1, "max_entries": 1},    # full-size: hard cap 1
         "GC":  {"qty": 1, "max_entries": 1},    # full-size: hard cap 1
@@ -693,19 +684,18 @@ def qty_for(symbol: str) -> int:
 
 def max_contracts_for(symbol: str) -> int:
     s = active_sizing().get(symbol, _DEFAULT_SIZING)
-    return s["qty"] * s["max_entries"]
+    return s["qty"]
 
 
 def sizing_summary() -> str:
-    """Compact human string, e.g. 'MNQ/MES/MGC 2×4=8 · NQ 1×3=3'."""
+    """Compact no-stacking size string, e.g. 'MNQ/MES/MGC 2 ct · NQ 1 ct'."""
     tbl = active_sizing()
     groups: dict = {}
     for sym in INSTRUMENTS:
         s   = tbl.get(sym, _DEFAULT_SIZING)
-        key = (s["qty"], s["max_entries"])
-        groups.setdefault(key, []).append(sym)
+        groups.setdefault(s["qty"], []).append(sym)
     body = " · ".join(
-        f"{'/'.join(syms)} {q}×{m}={q*m}" for (q, m), syms in groups.items()
+        f"{'/'.join(syms)} {q} ct" for q, syms in groups.items()
     )
     lbl = ACCOUNT_SIZE_META.get(account_size, {}).get("label")
     return f"[{lbl}] {body}" if account_size in ACCOUNT_SIZE_PRESETS else body
@@ -725,7 +715,7 @@ def account_size_breakdown() -> dict:
         rows = []
         for sym in INSTRUMENTS:
             s   = tbl.get(sym, _DEFAULT_SIZING)
-            mx  = s["qty"] * s["max_entries"]
+            mx  = s["qty"]
             pv  = (contracts.get(sym) or {}).get("point_value") or POINT_VALUES.get(sym, 1.0)
             rows.append({
                 "sym":  sym,

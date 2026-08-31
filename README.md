@@ -45,7 +45,7 @@ This repository contains the **complete sanitized product**: the full v7 Pine in
 - **Seven supported contracts** — MNQ, NQ, MES, ES, MGC, GC, and CL are resolved to the active futures contract without confusing micro and full-size symbols.
 - **Per-symbol controls** — enable/disable every instrument and set long-only, short-only, or both. Direction choice is synchronized across instruments that share a no-hedge group.
 - **Account-size sizing** — Custom, 50K, 100K, and 150K profiles drive contract quantities, with separate micro/full-size behavior and a one-contract cap on full-size products.
-- **No accidental stacking or reversal** — same-direction alerts do not stack beyond the configured cap, and opposite alerts do not auto-reverse an open position. Order handling is serialized to prevent simultaneous webhook races.
+- **No stacking or automatic reversal** — every same-direction alert is ignored until that instrument is flat, and opposite alerts do not auto-reverse an open position. Order handling is serialized to prevent simultaneous webhook races.
 - **Account-wide anti-hedging** — MNQ/NQ/MES/ES form one equity-index group and MGC/GC form one gold group; opposing positions inside a group are blocked or resolved. CL remains independent.
 - **Adaptive exposure lock** — adaptive mode permits one open position account-wide and micros only, preventing another instrument from opening until the account is flat.
 
@@ -66,7 +66,7 @@ This repository contains the **complete sanitized product**: the full v7 Pine in
 - **Swing mode** — uses the Pine-provided completed-bar swing low/high as a persistent hard stop and applies the dashboard maximum-distance guard before entry.
 - **Take-profit choices** — use flat point targets by market group or structural 2x/3x/5x/7x multiples. Crude has its own distance, and A+ uses its HTF target or configured fallback.
 - **Automatic break-even** — at 50% progress to the live take-profit, stops move to entry plus/minus one tick. The bot re-reads live broker orders, recovers missing stop IDs, and flattens safely if price has already returned through break-even.
-- **Bracket integrity** — stacked-order inheritance, exact post-fill SL/TP pinning, live order recovery, reversal cleanup, and race-safe orphan-order sweeps keep broker protection aligned with the position.
+- **Bracket integrity** — exact post-fill SL/TP pinning, live order recovery, reversal cleanup, and race-safe orphan-order sweeps keep broker protection aligned with the position.
 - **Guarded exits** — structural exits must match both the open direction and entry timeframe; stale alerts cannot close a flipped or unrelated trade. The dashboard also provides a deliberate flatten-all control.
 
 ### Loss controls and adaptive sizing
