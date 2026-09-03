@@ -5,7 +5,7 @@
 **KAIROS** is an automated futures-trading system built around Inverted Fair Value Gaps (IFVG). It has two halves that talk to each other over a webhook:
 
 1. **A TradingView Pine Script indicator** (`alertbot.pine`) that detects strict IFVG setups on intraday charts and fires only when candle 3 closes. It also draws **higher-timeframe (15m / 1h / 4h) FVGs** right on your chart as visual context, with per-timeframe toggles, colors, and filled/unfilled tracking.
-2. **A Python (FastAPI) execution bot** (`main.py`) that receives those alerts, validates and filters them, and places bracket orders on futures through the **ProjectX / TopstepX API** — with live fill tracking over SignalR websockets, structural (close-based) invalidation exits, per-instrument risk filters, opt-in **adaptive position sizing** (a win-scaled risk ladder on the micros), Discord/Telegram trade notifications, persistent state, and a token-protected web dashboard for live control (pause, position sizing, instrument toggles, presets, account switching, flatten-all).
+2. **A Python (FastAPI) execution bot** (`main.py`) that receives those alerts, validates and filters them, and places bracket orders on futures through the **ProjectX / TopstepX API** — with live fill tracking over SignalR websockets, structural (close-based) invalidation exits, per-instrument risk filters, opt-in **adaptive position sizing** (a win-scaled risk ladder on the micros), Discord/Telegram trade notifications, persistent state, a token-protected Command Centre for live control, and a separate Trade Centre for historical review.
 
 Supported instruments: **MNQ / NQ, MES / ES, MGC / GC, CL** (micro and full-size Nasdaq, S&P, Gold, and Crude futures).
 
@@ -82,6 +82,7 @@ This repository contains the **complete sanitized product**: the full v7 Pine in
 - **Persistent recovery** — settings, presets, adaptive state, open-trade metadata, and session stats are written atomically and reconciled from broker history after restart.
 - **Protected dashboard** — `DASHBOARD_TOKEN` secures the login and control APIs. Account switching is blocked while positions are open, and the selected account is validated against the broker's account list.
 - **Complete control surface** — live positions/P&L, feed, trade log, results, filters, risk settings, A+, adaptive sizing, presets, account sizing, direction controls, session options, macro controls, and notification tests are available in one interface.
+- **Trade Centre** — a separate authenticated history workspace with shared filters, KPIs, equity/drawdown, session analysis, a day/time heatmap, sortable ledger, per-trade details, notes/tags, and CSV/JSON exports. It contains no trading controls.
 - **Discord and Telegram** — optional notifications cover A+ entry/outcome, break-even movement, loss-pause events, and test messages; Discord supports `@everyone`, `@here`, or a user ID.
 - **Practice-safe testing** — dashboard test signals and notification tests exercise the routing without waiting for a live setup; use a practice account before enabling market execution.
 - **Self-hosted delivery** — run locally behind Cloudflare Tunnel, use the included macOS service helper, deploy the optional landing page, and generate closed-trade analytics from the local results file.
@@ -153,6 +154,7 @@ The recommended macOS one-click launcher is a customer-created `KAIROS.command`;
 
 - `POST /webhook` — TradingView alerts come in here
 - `GET /dashboard?token=<DASHBOARD_TOKEN>` — live control panel
+- `GET /trade-centre?token=<DASHBOARD_TOKEN>` — historical review centre
 - `GET /health` — health check
 
 To expose it publicly, set up a Cloudflare Tunnel mapping `https://app.<your-domain>` → `127.0.0.1:8000`. **TopstepX API connections must run from your own physical/home device; do not deploy a Topstep account bot to a VPS.** The Oracle guide is retained only as a historical/non-Topstep deployment reference; read its warning before use. See [`deploy/DEPLOY_ORACLE.md`](deploy/DEPLOY_ORACLE.md) and [`deploy/DEPLOY_LANDING.md`](deploy/DEPLOY_LANDING.md).
@@ -171,6 +173,23 @@ The dashboard (`/dashboard?token=<DASHBOARD_TOKEN>`) is the bot's live control p
 - **Testing** — fire simulated buy/sell signals and test notifications without touching the market, plus the live trade log, activity feed, and closed-trade results table.
 
 ![Per-instrument filters and toggles in the dashboard](assets/instrument_filter.png)
+
+## Trade Centre
+
+Open `/trade-centre` on the same KAIROS URL and use the same
+`DASHBOARD_TOKEN` as the Command Centre. Filters update every metric, chart,
+heatmap, and ledger row together. Select **View trade** for the entry rationale,
+initial plan, outcome, provenance, data-quality notes, and private review
+notes/tags. CSV exports contain the visible rows; JSON exports preserve the full
+normalized records and calculation definitions.
+
+![Trade Centre performance overview](assets/trade-centre/overview.png)
+
+![Trade Centre ledger](assets/trade-centre/ledger.png)
+
+Trade history and review notes stay on the machine running KAIROS. The screenshots
+show the interface with one local historical dataset and are not a guarantee or
+independently verified statement of future performance.
 
 ## TradingView alert setup
 
