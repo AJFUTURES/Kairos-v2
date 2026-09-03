@@ -15,6 +15,7 @@ class ReleaseContractTests(unittest.TestCase):
         for relative in (
             "main.py",
             "adaptive_sizing.py",
+            "trade_centre.py",
             "Analytics/generate_analytics.py",
         ):
             source = (ROOT / relative).read_text(encoding="utf-8")
@@ -72,6 +73,23 @@ class ReleaseContractTests(unittest.TestCase):
         ):
             self.assertIn(header, bot)
 
+    def test_trade_centre_is_separate_authenticated_and_documented(self):
+        bot = (ROOT / "main.py").read_text(encoding="utf-8")
+        page = (ROOT / "web" / "trade-centre.html").read_text(encoding="utf-8")
+        release = (ROOT / "docs" / "releases" / "trade-centre-2026-09-03.md").read_text(encoding="utf-8")
+        self.assertIn('@app.get("/trade-centre"', bot)
+        self.assertIn('@app.get("/api/trade-centre"', bot)
+        self.assertIn('@app.post("/api/trade-centre/review"', bot)
+        self.assertIn("dependencies=[Depends(require_dashboard_auth)]", bot)
+        self.assertNotIn("/api/pause", page)
+        self.assertIn("Trade Centre", page)
+        self.assertIn("same", release.lower())
+        for relative in (
+            "assets/trade-centre/overview.png",
+            "assets/trade-centre/ledger.png",
+        ):
+            self.assertTrue((ROOT / relative).is_file(), relative)
+
     def test_readme_keeps_notice_and_all_existing_images(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("**IMPORTANT SIGNAL CHANGE:", readme)
@@ -92,6 +110,7 @@ class ReleaseContractTests(unittest.TestCase):
             "*.log",
             "trade_logs.txt",
             "results.txt",
+            "trade_reviews.json",
             ".kairos.pid",
             ".kairos-tunnel.pid",
             "*.command",

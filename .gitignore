@@ -7,6 +7,7 @@ bot_state.json
 kairos.log
 trade_logs.txt
 results.txt
+trade_reviews.json*
 Analytics/kairos_analytics.html
 .kairos.pid
 .kairos-tunnel.pid

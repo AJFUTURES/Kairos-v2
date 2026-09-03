@@ -83,7 +83,7 @@
   :focus-visible{outline:2px solid var(--line-2);outline-offset:2px}
 </style>
 </head>
-<body data-denied="__DENIED__">
+<body data-denied="__DENIED__" data-destination="__LOGIN_DESTINATION__">
   <main class="card">
     <a class="brand" href="/" aria-label="KAIROS — home">
       <span class="mark"><img src="/logo.png" alt=""></span>
@@ -118,9 +118,11 @@
     var v = i.value.trim();
     if(!v){ e.textContent = 'Enter your access token.'; i.focus(); return; }
     e.textContent = '';
-    // Carry the token to /dashboard once; the server moves it into an HttpOnly
-    // cookie and the dashboard scrubs it from the URL.
-    window.location.href = '/dashboard?token=' + encodeURIComponent(v);
+    // Carry the token to the originally requested authenticated page once; the
+    // server moves it into an HttpOnly cookie and that page scrubs it from the URL.
+    var destination = b.getAttribute('data-destination');
+    if(!destination || destination.charAt(0) !== '/') destination = '/dashboard';
+    window.location.href = destination + '?token=' + encodeURIComponent(v);
   });
 })();
 </script>

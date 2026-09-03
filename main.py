@@ -9,6 +9,7 @@ import websockets
 import ssl
 import certifi
 import adaptive_sizing as adaptive   # adaptive position-sizing engine (micros only)
+import trade_centre as trade_centre_data
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
@@ -4068,6 +4069,44 @@ async def get_state():
     }
 
 
+# ─── Trade Centre (historical review only) ────────────────────────────────────
+# These endpoints read finalized local history and write only the separate review
+# sidecar. They never call the broker or mutate trading settings/state.
+@app.get("/api/trade-centre", dependencies=[Depends(require_dashboard_auth)])
+async def get_trade_centre():
+    return trade_centre_data.build_trade_centre_payload(
+        RESULTS_FILE,
+        list(trade_log),
+        _TRADE_REVIEWS_PATH,
+    )
+
+
+@app.post("/api/trade-centre/review", dependencies=[Depends(require_dashboard_auth)])
+async def update_trade_review(request: Request):
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    trade_id = str(data.get("trade_id") or "").strip()
+    payload = trade_centre_data.build_trade_centre_payload(
+        RESULTS_FILE,
+        list(trade_log),
+        _TRADE_REVIEWS_PATH,
+    )
+    if trade_id not in {row["trade_id"] for row in payload["trades"]}:
+        raise HTTPException(status_code=404, detail="Unknown trade")
+    try:
+        review = trade_centre_data.save_review(
+            _TRADE_REVIEWS_PATH,
+            trade_id,
+            data.get("notes", ""),
+            data.get("tags", []),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "trade_id": trade_id, "review": review}
+
+
 @app.post("/api/pause", dependencies=[Depends(require_dashboard_auth)])
 async def toggle_pause():
     global bot_paused
@@ -4673,7 +4712,10 @@ async def dashboard(request: Request,
         # shows the bare form without an "incorrect token" banner. The token is
         # never logged or echoed back into the page.
         denied = "1" if provided else ""
-        return HTMLResponse(content=_read_page(_LOGIN_PATH).replace("__DENIED__", denied),
+        login_html = (_read_page(_LOGIN_PATH)
+                      .replace("__DENIED__", denied)
+                      .replace("__LOGIN_DESTINATION__", "/dashboard"))
+        return HTMLResponse(content=login_html,
                             status_code=401, headers=control_headers)
 
     # Valid → serve the dashboard. Inject the token so the page's fetch calls can
@@ -4694,15 +4736,49 @@ async def dashboard(request: Request,
     return resp
 
 
+@app.get("/trade-centre", response_class=HTMLResponse)
+async def trade_centre_page(request: Request,
+                            token: str = Query(None),
+                            dash: str = Cookie(None)):
+    """Authenticated, historical-only companion to the Command Centre."""
+    if not DASHBOARD_TOKEN:
+        raise HTTPException(status_code=503, detail="DASHBOARD_TOKEN not configured")
+
+    control_headers = {
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+    }
+    provided = token or dash
+    if not provided or not hmac.compare_digest(provided, DASHBOARD_TOKEN):
+        denied = "1" if provided else ""
+        login_html = (_read_page(_LOGIN_PATH)
+                      .replace("__DENIED__", denied)
+                      .replace("__LOGIN_DESTINATION__", "/trade-centre"))
+        return HTMLResponse(content=login_html,
+                            status_code=401, headers=control_headers)
+    tok = token or dash or ""
+    html = _read_page(_TRADE_CENTRE_PATH).replace("__DASHBOARD_TOKEN__", json.dumps(tok)[1:-1])
+    resp = HTMLResponse(content=html, headers=control_headers)
+    if token:
+        secure = (request.url.scheme == "https"
+                  or request.headers.get("x-forwarded-proto") == "https")
+        resp.set_cookie("dash", token, httponly=True, samesite="lax",
+                        secure=secure, max_age=30 * 24 * 3600, path="/")
+    return resp
+
+
 # ─── Public / control pages (served from web/*.html) ───────────────────────
 # Each page is its own file so the markup/CSS/JS can be edited as real front-end
 # code (no Python triple-quoted-string escaping gotchas). They are re-read PER
 # REQUEST — the files are small and the traffic is light — so edits to
-# site/index.html · web/login.html · web/dashboard.html appear on a browser
+# site/index.html · web/login.html · web/dashboard.html · web/trade-centre.html
+# appear on a browser
 # refresh with NO bot restart. Only the served HTML is affected; trading logic
 # is untouched.
-# __DENIED__ (login) and __DASHBOARD_TOKEN__ (dashboard) are substituted per
-# request by their routes above. (The landing page is site/index.html — see below.)
+# __DENIED__ + __LOGIN_DESTINATION__ (login) and __DASHBOARD_TOKEN__
+# (authenticated pages) are substituted per request by the routes above.
 _WEB_DIR        = _pathlib.Path(__file__).parent / "web"
 # The PUBLIC landing page now lives in ../site/ — it is hosted independently on
 # Cloudflare Pages at https://your-domain.example so it stays up even when this bot
@@ -4712,6 +4788,8 @@ _WEB_DIR        = _pathlib.Path(__file__).parent / "web"
 _LANDING_PATH   = _pathlib.Path(__file__).parent / "site" / "index.html"
 _LOGIN_PATH     = _WEB_DIR / "login.html"
 _DASHBOARD_PATH = _WEB_DIR / "dashboard.html"
+_TRADE_CENTRE_PATH = _WEB_DIR / "trade-centre.html"
+_TRADE_REVIEWS_PATH = _pathlib.Path(__file__).parent / "trade_reviews.json"
 
 
 def _read_page(path: _pathlib.Path) -> str:
@@ -4741,6 +4819,7 @@ async def robots():
     # not. login.html + dashboard.html also carry a noindex meta as a backstop.
     body = ("User-agent: *\n"
             "Disallow: /dashboard\n"
+            "Disallow: /trade-centre\n"
             "Disallow: /api/\n")
     return Response(content=body, media_type="text/plain")
 

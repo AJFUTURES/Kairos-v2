@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-03 — Trade Centre
+
+- Added a separate authenticated Trade Centre with shared filters, performance
+  metrics, native charts, a time heatmap, a sortable ledger, and readable
+  per-trade review details.
+- Normalized legacy `results.txt` and richer recent `trade_log` rows without
+  changing trading behavior or the existing Command Centre.
+- Added private notes/tags plus documented CSV and JSON exports.
+- See the [minimal release note](docs/releases/trade-centre-2026-09-03.md).
+
 ## 2026-08-31 — Customer self-service and one-click readiness
 
 - Added `HOW-TO-USE.md`, a complete private-access, credentials, Cloudflare, TradingView, Practice-test, one-click launch, daily-use and troubleshooting walkthrough.

@@ -5,6 +5,12 @@ change KAIROS. For the customer installation walkthrough, start with
 [`HOW-TO-USE.md`](HOW-TO-USE.md); for the feature inventory, read
 [`README.md`](README.md).
 
+## Current release
+
+The Trade Centre release adds authenticated historical review, local
+normalization, notes/tags, and contextual exports without changing the Command
+Centre or trading behavior.
+
 ## What KAIROS does
 
 KAIROS is a self-hosted futures execution system. TradingView's Pine indicator
@@ -51,7 +57,9 @@ GitHub, Cloudflare Pages, the README, or an AI prompt.
 | `main.py` | Webhook, risk gates, execution, broker connections, state and dashboard API | Trading behavior or server behavior changes |
 | `adaptive_sizing.py` | Pure micros-only sizing ladder | Adaptive multiplier/geometry rules change |
 | `web/dashboard.html` | Live control panel | Dashboard controls or presentation change |
+| `web/trade-centre.html` | Historical analysis and per-trade review | Trade Centre presentation changes |
 | `web/login.html` | Dashboard token entry page | Login presentation changes |
+| `trade_centre.py` | Trade-history normalization and private review storage | Review data or calculations change |
 | `site/` | Optional static landing page | Public marketing page changes |
 | `Analytics/` | Local results dashboard generator | Closed-trade analytics change |
 | `deploy/` | Optional deployment references | Hosting/service instructions change |
@@ -98,9 +106,11 @@ then update the payload example, README inventory, changelog and release tests.
 3. Launch with `./start.sh` or the customer's local `KAIROS.command` shortcut.
 4. Open the dashboard using `DASHBOARD_TOKEN`, confirm the selected account,
    sizing, enabled instruments, direction, stop mode, filters and pause state.
-5. Use dashboard **Test Buy/Test Sell** before enabling TradingView alerts. Test
+5. Open `/trade-centre` on the same origin with the same token to review
+   finalized trades; this page contains no trading controls.
+6. Use dashboard **Test Buy/Test Sell** before enabling TradingView alerts. Test
    signals authenticate/read broker state but deliberately do not place an order.
-6. Stop a foreground bot with Ctrl+C. Use `./bot.sh stop` for the optional service.
+7. Stop a foreground bot with Ctrl+C. Use `./bot.sh stop` for the optional service.
 
 `start.sh` creates `venv`, installs pinned requirements when needed, validates all
 required keys without printing them, checks port 8000, starts a configured local
