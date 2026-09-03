@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-09-03 — Trade Centre
+## 2026-09-03 — KAIROS v3 / Trade Centre
 
 - Added a separate authenticated Trade Centre with shared filters, performance
   metrics, native charts, a time heatmap, a sortable ledger, and readable

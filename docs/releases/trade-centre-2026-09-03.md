@@ -1,4 +1,6 @@
-# Trade Centre
+# KAIROS v3
+
+## Trade Centre
 
 KAIROS now includes a separate, token-protected Trade Centre for reviewing
 finalized trades without changing anything in the Command Centre.
