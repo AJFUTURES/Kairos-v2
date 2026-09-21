@@ -19,8 +19,8 @@
 
 - [x] Execution-safety regression tests pass.
 - [x] Full local release suite passes.
-- [ ] Pine source compiles in TradingView.
-- [ ] NWOG/NDOG visual parity is reviewed.
+- [x] Pine source compiles in TradingView.
+- [x] NWOG/NDOG source, settings, and chart-load parity is reviewed.
 - [ ] Sanitized package and checksums are verified.
 - [ ] GitHub release is published.
 - [ ] Discord release post and attachments are verified.
@@ -38,7 +38,11 @@
 - 2026-09-21: Ported the visual-only open-gap module as IFVG Pro v8, preserved
   MPL 2.0 attribution, and updated the public guides and release notes.
 - 2026-09-21: All 29 automated tests, shell syntax checks, Python compilation,
-  and whitespace checks pass. TradingView compilation remains the next gate.
+  and whitespace checks pass.
+- 2026-09-21: Loaded the exact committed 1,305-line source in TradingView. It
+  compiled without a Pine error, appeared on the chart as `IFVG Pro v8`, and
+  exposed the full NWOG/NDOG settings surface. Review covered source, controls,
+  and successful chart loading; it was not a pixel-by-pixel historical replay.
 
 ## Stop condition
 
