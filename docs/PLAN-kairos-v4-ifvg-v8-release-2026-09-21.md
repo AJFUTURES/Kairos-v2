@@ -21,7 +21,7 @@
 - [x] Full local release suite passes.
 - [x] Pine source compiles in TradingView.
 - [x] NWOG/NDOG source, settings, and chart-load parity is reviewed.
-- [ ] Sanitized package and checksums are verified.
+- [x] Sanitized package and checksums are verified.
 - [ ] GitHub release is published.
 - [ ] Discord release post and attachments are verified.
 
@@ -43,6 +43,9 @@
   compiled without a Pine error, appeared on the chart as `IFVG Pro v8`, and
   exposed the full NWOG/NDOG settings surface. Review covered source, controls,
   and successful chart loading; it was not a pixel-by-pixel historical replay.
+- 2026-09-21: Built the sanitized `KAIROS-v4.zip`, standalone
+  `IFVG-Pro-v8.pine`, release notes, guidebook/video chapters, and SHA-256
+  manifest. The ZIP integrity check passes and contains no private runtime files.
 
 ## Stop condition
 
