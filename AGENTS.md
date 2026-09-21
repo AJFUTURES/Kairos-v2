@@ -7,9 +7,10 @@ change KAIROS. For the customer installation walkthrough, start with
 
 ## Current release
 
-The Trade Centre release adds authenticated historical review, local
-normalization, notes/tags, and contextual exports without changing the Command
-Centre or trading behavior.
+KAIROS v4 pairs IFVG Pro v8's visual-only NWOG/NDOG chart layer with execution
+safety repairs: structural phase 2 retains its broker stop, broker business
+rejections are not treated as successful orders, and unconfirmed flattens keep
+protection and recovery tracking. Strict candle-3 signal behavior is unchanged.
 
 ## What KAIROS does
 
@@ -91,6 +92,8 @@ local-only and ignored by Git.
 ### In `alertbot.pine`
 
 - **Inputs** define IFVG, visual, session, alerts, risk, HTF overlay and bias controls.
+- **Open Gaps** adds isolated NWOG, NDOG ETH and NDOG RTH drawings, settings, and
+  configurable RTH times; it must remain visual-only.
 - **IFVG Core Logic** is the strict candle-3 + overlap + sweep gate and alert payload.
 - **Session Liquidity** tracks Asia/London/New York highs, lows and matching A+ sweeps.
 - **HTF FVG Overlay** tracks filled/unfilled 15m, 1h and 4h gaps.
@@ -200,4 +203,4 @@ git status --short
 Also verify that `.env`, state, logs, results, `venv`, tunnel credentials and
 `KAIROS.command` are not staged. A release is not customer-ready until the new Pine
 compiles in TradingView, its alert is recreated, a practice test passes, and the
-customer has explicit access to the private GitHub repository.
+sanitized public release artifacts and checksums are available.

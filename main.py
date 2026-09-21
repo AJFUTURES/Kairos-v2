@@ -1850,9 +1850,8 @@ async def enforce_bracket_levels(client, token, account_id, symbol, sl_abs, tp_a
 
 async def place_stop_order(client, token, account_id, symbol, stop_price, pos_side, size):
     """Place a standalone protective stop that flattens `size` if price hits
-    stop_price. Used by Auto-BE in two-phase PHASE 2, where the original hard stop
-    has been removed and there is no bracket stop left to move. Returns the new
-    order id on success, else None."""
+    stop_price. Used by Auto-BE when no live protective stop can be recovered.
+    Returns the new order id on success, else None."""
     cid = (contracts.get(symbol) or {}).get("id")
     if not cid:
         return None
@@ -1885,17 +1884,16 @@ async def trigger_breakeven(client, token, account_id, symbol):
     direction = pos.get("direction")
     if avg is None or direction not in ("LONG", "SHORT"):
         return
-    # Mark the trade as having reached break-even protection (for outcome tagging),
-    # regardless of whether the stop-move below succeeds or we end up flattening.
-    _stamp_open_rows(symbol, be_fired=True)
-    # A+ trade moving to break-even → ping (A+-only). The trade is now risk-free.
-    if any(e.get("a_plus") and not e.get("separator") and e.get("instrument") == symbol
-           and e.get("pnl") == "—" for e in trade_log):
-        asyncio.create_task(notify_push(
-            f"⚖️ A+ {symbol} moved to break-even · {now_ny()} NY", mention=True,
-            embed=_embed(f"⚖️ A+ moved to Break-Even — {symbol}", "be",
-                         fields=[("Instrument", symbol), ("Stop", "→ break-even (risk-free)")],
-                         footer=f"{now_ny()} NY")))
+    def _mark_be_armed():
+        """Record and announce BE only after broker protection is confirmed."""
+        _stamp_open_rows(symbol, be_fired=True)
+        if any(e.get("a_plus") and not e.get("separator") and e.get("instrument") == symbol
+               and e.get("pnl") == "—" for e in trade_log):
+            asyncio.create_task(notify_push(
+                f"⚖️ A+ {symbol} moved to break-even · {now_ny()} NY", mention=True,
+                embed=_embed(f"⚖️ A+ moved to Break-Even — {symbol}", "be",
+                             fields=[("Instrument", symbol), ("Stop", "→ break-even")],
+                             footer=f"{now_ny()} NY")))
     tick = (contracts.get(symbol) or {}).get("tick") or 0.25
     # One tick above avg for LONG (guarantees positive fill); one tick below for SHORT.
     be_price = round(avg + tick, 10) if direction == "LONG" else round(avg - tick, 10)
@@ -1919,14 +1917,14 @@ async def trigger_breakeven(client, token, account_id, symbol):
         state["be_triggered"] = True
         await alog(f"BE | {symbol} price back at break-even — flattening to lock it", "warning",
                    feed_msg=f"BE flatten · {symbol}")
-        await flatten_symbol(symbol, reason="break-even reached")
+        closed = await flatten_symbol(symbol, reason="break-even reached")
+        if not closed and be_state.get(symbol) is state:
+            state["be_triggered"] = False
         return
 
-    # Use only the stops that are ACTUALLY live right now. The old code fell back to
-    # the stored ids, which after a two-phase phase-2 transition point at the already
-    # CANCELLED hard stop — modifying it returns "Order not found" (errorCode 3), which
-    # the code mis-read as "Invalid stop price" and flattened the trade early. Fixed:
-    # if there's a live stop we move it; if not (phase 2), we PLACE a fresh BE stop.
+    # Use only the stops that are ACTUALLY live right now. Structural phase 2 now
+    # retains its broker-side hard stop, but this live lookup still protects against
+    # stale stored ids after fills, manual changes, or broker reconciliation.
     live_ids = await find_sl_orders(client, token, account_id, symbol)
     if live_ids:
         state["sl_order_ids"] = live_ids
@@ -1954,8 +1952,9 @@ async def trigger_breakeven(client, token, account_id, symbol):
         success_count = sum(1 for ok, _ in results if ok)
         invalid_price = any(inv for _, inv in results)
 
-        if success_count > 0:
+        if success_count == len(live_ids):
             state["be_triggered"] = True
+            _mark_be_armed()
             await alog(
                 f"✅ BREAK EVEN SET | {symbol} | SL moved to {be_price} (avg {avg} ± 1 tick) | "
                 f"{success_count}/{len(live_ids)} order(s) modified",
@@ -1968,27 +1967,49 @@ async def trigger_breakeven(client, token, account_id, symbol):
             state["be_triggered"] = True
             await alog(f"BE | {symbol} stop rejected at break-even — flattening to lock it", "warning",
                        feed_msg=f"BE flatten · {symbol}")
-            await flatten_symbol(symbol, reason="break-even reached")
+            closed = await flatten_symbol(symbol, reason="break-even reached")
+            if not closed and be_state.get(symbol) is state:
+                state["be_triggered"] = False
             return
-        # else (e.g. the stop vanished) → fall through and place a fresh one.
+        if success_count:
+            await alog(
+                f"BE | {symbol} only {success_count}/{len(live_ids)} stop order(s) modified — will retry",
+                "warning",
+            )
+            state["be_triggered"] = False
+            return
+        # No stop was modified (for example all ids vanished) → place a fresh one.
 
-    # No live stop to move (two-phase phase 2, hard stop removed) → PLACE a fresh
-    # break-even stop so the trade is risk-free from here, exactly as intended.
+    # No live stop to move (for example after a manual cancellation) → place a fresh
+    # break-even stop so the position regains broker-side protection.
     new_id = await place_stop_order(client, token, account_id, symbol, be_price,
                                     0 if direction == "LONG" else 1, pos.get("size", 0))
     if new_id:
         state["be_triggered"] = True
         state["sl_order_ids"] = [new_id]
         current_bracket_ids.setdefault(symbol, set()).add(new_id)
+        _mark_be_armed()
         await alog(
-            f"✅ BREAK EVEN SET | {symbol} | placed break-even stop @ {be_price} (phase 2)",
+            f"✅ BREAK EVEN SET | {symbol} | placed break-even stop @ {be_price}",
             "success",
             feed_msg=f"BE triggered · {symbol}",
         )
     else:
-        # Couldn't place a stop — do NOT flatten early; ride the close-based exit.
-        state["be_triggered"] = True
-        await alog(f"BE | {symbol} couldn't place a break-even stop — riding the close-based exit", "warning")
+        # Keep the monitor eligible to retry. Never mark BE as armed when the broker
+        # did not accept a protective order.
+        state["be_triggered"] = False
+        await alog(f"BE | {symbol} couldn't place a break-even stop — will retry", "warning")
+
+
+def _order_response_ok(response) -> bool:
+    """A ProjectX order succeeds only when transport and business status agree."""
+    if response.status_code != 200:
+        return False
+    try:
+        body = response.json()
+    except Exception:
+        return False
+    return isinstance(body, dict) and body.get("success") is True
 
 
 async def flatten_position(client, token, account_id, symbol, current_size, current_side):
@@ -2017,14 +2038,13 @@ async def flatten_position(client, token, account_id, symbol, current_size, curr
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 json=payload,
             )
-    if response.status_code == 200:
+    if _order_response_ok(response):
         positions[symbol] = blank_pos()
         await alog(f"FLATTENED {symbol} — {current_size} contract(s) {direction} closed", "system",
                    feed_msg=f"Flatten · {symbol} {current_size}")
         return True
-    else:
-        await alog(f"FLATTEN FAILED | {response.status_code} — {response.text}", "error")
-        return False
+    await alog(f"FLATTEN FAILED | {response.status_code} — {response.text}", "error")
+    return False
 
 
 async def place_order(client, token, account_id, symbol, side, current_size,
@@ -2066,17 +2086,17 @@ async def place_order(client, token, account_id, symbol, side, current_size,
     tp_source = ("TP.C" if symbol in CRUDE_SYMBOLS else
                  "TP.1" if symbol in TP1_SYMBOLS else "TP.2")
 
-    # ── Two-phase structural SL — ONE level: the IFVG invalidation level ───────
+    # ── Structural SL — ONE level: the IFVG invalidation level ────────────────
     # That level is candle-1's LOW for a long and candle-1's HIGH for a short —
     # exactly what the strict candle-3 alert sends as sl_price. The PHASE
-    # only changes the trigger, never the level:
+    # only adds a second line of enforcement, never changes the level:
     #   Phase 1 (entry candle): a HARD broker stop sitting AT the level. Any touch
     #     through it = out — if price slips back through the IFVG level inside the
     #     first candle the imbalance never formed (a "paper cut", which is fine).
-    #   Phase 2 (after the entry candle closes): structural_monitor_loop removes the
-    #     hard stop and exits only when a candle CLOSES beyond that same level —
-    #     wicks through it are allowed, giving the runner room. (Auto-BE may move the
-    #     stop to break-even during phase 1; if so it's kept into phase 2.)
+    #   Phase 2 (after the entry candle closes): the hard broker stop remains attached
+    #     while structural_monitor_loop also requests a market close when a confirmed
+    #     candle closes beyond that same level. Auto-BE may move the broker stop to
+    #     break-even in either phase.
     # Activates only when the level is on the LOSS side of the (estimated) entry,
     # which the IFVG entry rule guarantees; otherwise we fall back to the safety net.
     # ── Swing stop — the 15-bar low (long) / high (short) sent by Pine ──────────
@@ -2232,7 +2252,7 @@ async def place_order(client, token, account_id, symbol, side, current_size,
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 json=payload,
             )
-    if response.status_code == 200:
+    if _order_response_ok(response):
         new_size      = current_size + _qty
         direction_str = "LONG" if side == 0 else "SHORT"
         prev_avg = (positions.get(symbol) or {}).get("avg_price")
@@ -2630,11 +2650,13 @@ async def execute_trade(symbol: str, action: str, ifvg_info: str = None, is_test
 
 
 async def flatten_symbol(symbol: str, reason: str = "flatten", require_side=None) -> bool:
-    """Lock-protected: cancel orders + flatten ONE instrument + sweep orphan brackets
-    + clear its BE/structural state. Shared by the structural exit, the BE roll-back,
-    and the anti-hedge resolver. It re-reads the broker under the lock, so it can never
-    close a position that's being (re)opened in the same instant, and `require_side`
-    (0=long, 1=short) makes it a no-op unless the live position is on that side."""
+    """Lock-protected: flatten ONE instrument, then clean up after confirmation.
+
+    Existing brackets and recovery tracking stay in place while the market-close
+    request is in flight. They are removed only after the broker confirms the
+    position is flat. `require_side` (0=long, 1=short) also prevents a stale exit
+    from closing a newly flipped position.
+    """
     async with trade_lock:
         async with api_client() as client:
             token, account_id = await get_auth(client)
@@ -2663,16 +2685,20 @@ async def flatten_symbol(symbol: str, reason: str = "flatten", require_side=None
                 "warning",
                 feed_msg=f"Flatten · {symbol} {pos['direction']} ({reason})",
             )
-            await cancel_all_orders(client, token, account_id, symbol)
             ok = await flatten_position(client, token, account_id, symbol, pos["size"], pos["side"])
-            if not await confirm_flat(client, token, account_id, symbol):
+            confirmed = await confirm_flat(client, token, account_id, symbol)
+            if not confirmed:
                 await alog(f"{symbol} flatten NOT confirmed — position may still be open; "
-                           f"the 30s reconcile/orphan sweep will re-check", "warning")
+                           f"protective orders and recovery tracking retained", "warning")
+                st = structural_pos.get(symbol)
+                if isinstance(st, dict):
+                    st["exiting"] = False
+                return False
             await cancel_all_orders(client, token, account_id, symbol)   # sweep orphans now that it's flat
             structural_pos.pop(symbol, None)
             be_state.pop(symbol, None)
             current_bracket_ids.pop(symbol, None)
-            return ok
+            return bool(ok and confirmed)
 
 
 async def handle_structural_exit(symbol: str, reason: str = "IFVG invalidated", exit_tf: str = None):
@@ -3462,10 +3488,10 @@ async def be_monitor_loop():
                 # If SL order IDs are still missing, recover them from the SAME
                 # snapshot — no extra API call. This only runs on a polling tick
                 # (snapshot present); on other ticks we just wait. Crucially this
-                # avoids a per-SECOND find_sl_orders poll for a position that has no
-                # stop to find (e.g. structural phase 2), which would otherwise burn
-                # ~60 requests/min. If there genuinely is no stop, trigger_breakeven
-                # places a fresh break-even one once the threshold is hit.
+                # avoids a per-SECOND find_sl_orders poll after a slow bracket fill or
+                # manual cancellation, which would otherwise burn ~60 requests/min.
+                # If there genuinely is no stop, trigger_breakeven places a fresh
+                # break-even one once the threshold is hit.
                 if not state.get("sl_order_ids") and unrealized_pts < trigger:
                     if _orders_snap is not None:
                         try:
@@ -3496,15 +3522,17 @@ async def structural_monitor_loop():
     """Self-contained close-based structural exit. For every structural position that
     carries a stored IFVG invalidation level (candle-1 LOW for a long, candle-1 HIGH
     for a short — the same level the phase-1 hard stop sat at), this watches the live
-    quote stream and, at each close of a candle on the ENTRY timeframe, flattens if
+    quote stream and, at each close of a candle on the ENTRY timeframe, requests a
+    flatten if
     that candle CLOSED beyond the level (long → close below the level; short → close
-    above it). Wicks through the level are allowed — only closes count.
+    above it). The same-level broker stop stays attached continuously, so an
+    intrabar breach can still execute at the broker before the close monitor runs.
 
     Why this exists: the structural exit used to rely solely on a separate
     TradingView 'exit' alert, which in practice never fired — so structural trades
     silently ran all the way to the wide 20/40pt safety net. This makes the bot
-    enforce the close-based stop itself. The broker safety net stays as the ultimate
-    backstop; the per-signal TV exit alert still works too (whichever trips first).
+    enforce the close-based condition itself. The per-signal TV exit alert still
+    works too (whichever trips first).
 
     Guards against premature exits: needs a numeric level + an intraday timeframe;
     never evaluates the entry candle (only a SUBSEQUENT close counts); requires the
@@ -3549,8 +3577,9 @@ async def structural_monitor_loop():
                     continue   # position gone or flipped — not ours to exit
 
                 # ── Phase 1 → 2: the entry candle just closed ────────────────────
-                # STRUCTURAL → remove the candle-1 hard stop and hand over to the
-                #           close-based exit below (unless auto-BE already set BE).
+                # STRUCTURAL → retain the candle-1 broker stop and also arm the
+                #           close-based monitor below. Continuous broker protection
+                #           takes precedence over the former wick-tolerance behavior.
                 if st.get("two_phase") and st.get("phase") == 1:
                     _be_fired = bool((be_state.get(symbol) or {}).get("be_triggered"))
                     _aplus_swing = st.get("aplus_swing")
@@ -3590,24 +3619,12 @@ async def structural_monitor_loop():
 
                     st["phase"] = 2
                     _stamp_open_rows(symbol, reached_phase2=True)   # survived entry candle
-                    # Remove the candle-1 hard stop → close-based exit, unless auto-BE
-                    # already set break-even inside the entry candle.
-                    if not _be_fired:
-                        try:
-                            async with api_client() as client:
-                                token, account_id = await get_auth(client)
-                                if token and account_id:
-                                    sl_ids = await find_sl_orders(client, token, account_id, symbol)
-                                    if sl_ids:
-                                        await _cancel_ids(client, token, account_id, sl_ids)
-                                        await alog(
-                                            f"STRUCTURAL | {symbol} | candle-1 hard stop removed — "
-                                            f"now close-based (phase 2)",
-                                            "system",
-                                            feed_msg=f"Struct phase 2 · {symbol}",
-                                        )
-                        except Exception:
-                            pass
+                    await alog(
+                        f"STRUCTURAL | {symbol} | phase 2 armed — broker stop retained"
+                        f"{' at break-even' if _be_fired else ' at candle-1 level'}",
+                        "system",
+                        feed_msg=f"Struct phase 2 · {symbol}",
+                    )
 
                 if last is None:
                     continue

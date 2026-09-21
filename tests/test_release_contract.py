@@ -42,6 +42,47 @@ class ReleaseContractTests(unittest.TestCase):
         ):
             self.assertIn(field, pine)
 
+    def test_pine_has_visual_only_native_open_gaps(self):
+        pine = (ROOT / "alertbot.pine").read_text(encoding="utf-8")
+        module_marker = "// --- 9. NATIVE OPEN GAPS (NWOG / NDOG ETH / NDOG RTH) ---"
+        self.assertIn(module_marker, pine)
+        module = pine.split(module_marker, 1)[1]
+
+        for required in (
+            '"Open Gaps — New Week (NWOG)"',
+            '"Open Gaps — New Day ETH (NDOG)"',
+            '"Open Gaps — New Day RTH (NDOG)"',
+            '"Open Gaps — Advanced"',
+            'ogNWOG.ogAdd("NWOG"',
+            'ogETH.ogAdd("NDOG ETH"',
+            'ogRTH.ogAdd("NDOG RTH"',
+            'input.int(16, "Close Hour"',
+            'input.int(14, "Minute"',
+            'input.int(18, "Open Hour"',
+            'input.string("New York (ET)", "Reference Timezone"',
+            "Mozilla Public License 2.0",
+            "SPDX-License-Identifier: MPL-2.0",
+            "© fadizeidan",
+        ):
+            self.assertIn(required, pine)
+
+        open_gap_inputs = re.findall(r"^og\w+\s*=\s*input\.", pine, re.MULTILINE)
+        self.assertEqual(len(open_gap_inputs), 66)
+        self.assertNotIn("alert(", module)
+        self.assertNotIn("execInvLevel :=", module)
+        self.assertNotIn("lastBullSweepBar :=", module)
+        self.assertNotIn("lastBearSweepBar :=", module)
+        self.assertIn('indicator("IFVG Pro v8"', pine)
+
+    def test_order_paths_require_transport_and_business_success(self):
+        bot = (ROOT / "main.py").read_text(encoding="utf-8")
+        self.assertIn("def _order_response_ok", bot)
+        self.assertGreaterEqual(bot.count("if _order_response_ok(response):"), 2)
+        self.assertIn("protective orders and recovery tracking retained", bot)
+        self.assertIn("phase 2 armed — broker stop retained", bot)
+        self.assertIn("if success_count == len(live_ids):", bot)
+        self.assertIn("only {success_count}/{len(live_ids)} stop order(s) modified", bot)
+
     def test_aplus_stop_transition_requires_all_live_stops(self):
         bot = (ROOT / "main.py").read_text(encoding="utf-8")
         self.assertIn("_aplus_swing_transition", bot)

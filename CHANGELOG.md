@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-21 — KAIROS v4 / IFVG Pro v8
+
+- Added visual-only NWOG, NDOG ETH, and NDOG RTH layers with independent styling,
+  history, extension modes, Event Horizon, and configurable RTH reference times.
+- Retained strict candle-3 signals, A+ classification, targets, sizing, and webhook
+  payload behavior.
+- Kept the candle-1 structural broker stop attached during phase 2 while retaining
+  direction- and timeframe-gated close monitoring at the same invalidation level.
+- Required both HTTP success and broker `success: true` before an entry or flatten
+  is treated as accepted.
+- Retained brackets and local recovery tracking until a flatten is broker-confirmed.
+- Made rejected break-even placement retryable instead of reporting it as armed.
+- Updated the public-download guide, release checks, licensing notices, and the
+  guidebook/video chapter plan.
+- See [KAIROS v4 release notes](docs/releases/KAIROS-v4.md).
+
 ## 2026-09-03 — KAIROS v3 / Trade Centre
 
 - Added a separate authenticated Trade Centre with shared filters, performance

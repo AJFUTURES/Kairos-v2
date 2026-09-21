@@ -4,16 +4,16 @@
 
 **KAIROS** is an automated futures-trading system built around Inverted Fair Value Gaps (IFVG). It has two halves that talk to each other over a webhook:
 
-1. **A TradingView Pine Script indicator** (`alertbot.pine`) that detects strict IFVG setups on intraday charts and fires only when candle 3 closes. It also draws **higher-timeframe (15m / 1h / 4h) FVGs** right on your chart as visual context, with per-timeframe toggles, colors, and filled/unfilled tracking.
-2. **A Python (FastAPI) execution bot** (`main.py`) that receives those alerts, validates and filters them, and places bracket orders on futures through the **ProjectX / TopstepX API** — with live fill tracking over SignalR websockets, structural (close-based) invalidation exits, per-instrument risk filters, opt-in **adaptive position sizing** (a win-scaled risk ladder on the micros), Discord/Telegram trade notifications, persistent state, a token-protected Command Centre for live control, and a separate Trade Centre for historical review.
+1. **A TradingView Pine Script indicator** (`alertbot.pine`) that detects strict IFVG setups on intraday charts and fires only when candle 3 closes. It also draws **higher-timeframe (15m / 1h / 4h) FVGs** and native **NWOG / NDOG ETH / NDOG RTH** open gaps on the same chart.
+2. **A Python (FastAPI) execution bot** (`main.py`) that receives those alerts, validates and filters them, and places bracket orders on futures through the **ProjectX / TopstepX API** — with live fill tracking over SignalR websockets, continuously attached broker protection, structural close monitoring, per-instrument risk filters, opt-in **adaptive position sizing** (a win-scaled risk ladder on the micros), Discord/Telegram trade notifications, persistent state, a token-protected Command Centre for live control, and a separate Trade Centre for historical review.
 
 Supported instruments: **MNQ / NQ, MES / ES, MGC / GC, CL** (micro and full-size Nasdaq, S&P, Gold, and Crude futures).
 
 ![KAIROS dashboard with live trade log](assets/dashboard_logs.png)
 
-This repository contains the **complete sanitized product**: the full v7 Pine indicator, execution bot, risk controls, adaptive sizing, dashboard, analytics, deployment helpers, and documentation. It deliberately excludes credentials, live account state, logs, results, and private business material.
+This public repository contains the **complete sanitized product**: the full IFVG Pro v8 Pine indicator, KAIROS v4 execution bot, risk controls, adaptive sizing, dashboard, analytics, deployment helpers, and documentation. It deliberately excludes credentials, live account state, logs, results, and private business material.
 
-**New customer:** follow [HOW-TO-USE.md](HOW-TO-USE.md) from private-repository access through Practice-account acceptance testing. [AGENTS.md](AGENTS.md) explains the architecture, code navigation, safe customization, and how to work with an AI coding assistant without exposing keys or accidentally starting the bot.
+**New customer:** follow [HOW-TO-USE.md](HOW-TO-USE.md) from the public download through Practice-account acceptance testing. [AGENTS.md](AGENTS.md) explains the architecture, code navigation, safe customization, and how to work with an AI coding assistant without exposing keys or accidentally starting the bot.
 
 ---
 
@@ -29,6 +29,7 @@ This repository contains the **complete sanitized product**: the full v7 Pine in
 - **A+ chart classification** — A+ means a sweep of an enabled Asia/London/New York session high or low followed by a matching strict IFVG within the setup lookback. A+ labels and initial/swing stop guides are displayed on the chart.
 - **Higher-timeframe FVG overlay** — show 15-minute, 1-hour, and 4-hour FVGs with independent timeframe toggles. Filled and unfilled bullish/bearish gaps have separate visibility and last-1/3/5 limits, with filled gaps ranked by fill time.
 - **Multi-timeframe bias table** — 5m, 15m, 1h, 4h, and 12h bias is derived from the last respected, still-valid FVG on each timeframe and presented as bullish, bearish, or neutral.
+- **Native NWOG/NDOG layer** — New Week, New Day ETH, and New Day RTH gaps are built into IFVG Pro v8. Each family has independent visibility, current/historical boundary and CE styling, backgrounds, labels, 1–50 history, and always/nearest/proximity extension modes. NWOG also includes the optional Event Horizon. RTH reference timezone, close hour/minute, and open hour/minute are configurable; the default is New York 16:14 close / 18:00 open. This module is visual-only and does not change signals, A+ classification, execution levels, or webhook payloads.
 - **Flexible alert output** — choose Text, Webhook JSON, or Both; supply custom bullish/bearish text and a secret through indicator settings. JSON includes the execution levels and A+ metadata the bot needs.
 - **Structural exit alerts** — after a normal structural entry is armed, a confirmed close beyond its candle-1 invalidation level can emit a direction- and timeframe-matched exit message.
 
@@ -62,11 +63,11 @@ This repository contains the **complete sanitized product**: the full v7 Pine in
 ### Stops, targets, and position management
 
 - **Always-attached brackets** — every accepted entry is sent with broker-side stop-loss and take-profit orders; all stop calculations enforce a minimum eight-tick distance.
-- **Structural mode** — starts with candle-1 low/high hard protection, then switches normal setups to close-based invalidation after the entry candle. A broker safety-net distance remains available when a structural level is missing.
+- **Structural mode** — uses candle 1's low for a long or high for a short as the broker-side hard stop. That stop remains attached through phase 2; the bot also monitors confirmed closes beyond the same level and requests a guarded market exit. A configured safety-net distance is used only when the structural level is missing or unusable.
 - **Swing mode** — uses the Pine-provided completed-bar swing low/high as a persistent hard stop and applies the dashboard maximum-distance guard before entry.
 - **Take-profit choices** — use flat point targets by market group or structural 2x/3x/5x/7x multiples. Crude has its own distance, and A+ uses its HTF target or configured fallback.
-- **Automatic break-even** — at 50% progress to the live take-profit, stops move to entry plus/minus one tick. The bot re-reads live broker orders, recovers missing stop IDs, and flattens safely if price has already returned through break-even.
-- **Bracket integrity** — exact post-fill SL/TP pinning, live order recovery, reversal cleanup, and race-safe orphan-order sweeps keep broker protection aligned with the position.
+- **Automatic break-even** — when enabled, the trigger is 50% of the distance from average entry to the live take-profit. Long stops move to average entry plus one tick; short stops move to average entry minus one tick. The bot re-reads live broker orders, recovers missing stop IDs, and flattens if price has already returned through the intended break-even price. Partial or rejected BE changes remain eligible for retry instead of being reported as armed. One tick does not guarantee that fees or slippage are covered.
+- **Bracket integrity** — exact post-fill SL/TP pinning, live order recovery, business-status validation, reversal cleanup, and race-safe orphan-order sweeps keep broker protection aligned with the position. Flatten attempts retain protection and tracking until the broker confirms the position is flat.
 - **Guarded exits** — structural exits must match both the open direction and entry timeframe; stale alerts cannot close a flipped or unrelated trade. The dashboard also provides a deliberate flatten-all control.
 
 ### Loss controls and adaptive sizing
@@ -164,7 +165,7 @@ To expose it publicly, set up a Cloudflare Tunnel mapping `https://app.<your-dom
 The dashboard (`/dashboard?token=<DASHBOARD_TOKEN>`) is the bot's live control panel. Every change takes effect immediately and persists across restarts. The cards:
 
 - **Account** — switch the active broker account on the fly (practice / eval / funded); shows account size, current contract sizing, session stats, and the active stop/TP scheme.
-- **Trade Settings** — choose the stop mode (Structural or Swing), set take-profit as a multiple of the stop or as flat points per instrument group, enable auto break-even (stop → entry at 50% of TP), and restrict entries to the macro window only.
+- **Trade Settings** — choose the stop mode (Structural or Swing), set take-profit as a multiple of the stop or as flat points per instrument group, enable auto break-even (stop → average entry plus/minus one tick at 50% of TP distance), and restrict entries to the macro window only.
 - **Instruments** — tick each instrument on/off (micro MNQ · MES · MGC or mini NQ · ES · GC · CL) and click to cycle a per-symbol direction bias (long / short / both).
 - **Filters & Risk** — per-group Minimum FVG size (ticks) and Maximum Stop cap; configure the 1-minute session window (5m signals always trade, A+ any time) and the macro-window width (± minutes around each hour).
 - **A+ Setups** — master switch for session-H/L-sweep + strict candle-3 IFVG trades, fallback take-profit distances used when the alert carries no HTF FVG target, and a max-A+-per-session risk guard. Protection starts at candle 1 and transitions to the supplied swing H/L after the confirmed alert.
@@ -201,7 +202,7 @@ The indicator also overlays higher-timeframe (15m / 1h / 4h) FVGs on your chart 
 
 1. Open `alertbot.pine` in TradingView's Pine Editor, paste it, and choose **Add to chart**. Use an intraday chart (for example 1m/3m/5m) of a supported instrument.
 2. Open the indicator's settings. Under **Alerts**, choose **Webhook JSON** (or **Both**) and paste the exact `WEBHOOK_SECRET` from `.env` into **Webhook Secret**; the source file itself remains credential-free.
-3. Create an alert: **Alerts → Create Alert**, Condition = **IFVG Pro v7** → **Any alert() function call**. Select **Once Per Bar Close** if TradingView presents a frequency choice.
+3. Create an alert: **Alerts → Create Alert**, Condition = **IFVG Pro v8** → **Any alert() function call**. Select **Once Per Bar Close** if TradingView presents a frequency choice.
 4. In **Notifications**, enable **Webhook URL** and set it to your public webhook endpoint, e.g. `https://app.<your-domain>/webhook`.
 5. Leave the message field alone — the script builds the JSON payload itself.
 6. Repeat per chart/instrument you want the bot to trade, and make sure that instrument is ticked ON in the bot dashboard.
@@ -241,7 +242,7 @@ While adaptive mode is on it also uses a **fixed per-instrument stop/target** (p
 ```
 main.py            The bot — webhook, filters, execution, dashboard API
 adaptive_sizing.py Adaptive position-sizing ladder engine (pure, opt-in)
-alertbot.pine      Complete v7 TradingView indicator + webhook payloads
+alertbot.pine      Complete IFVG Pro v8 indicator + webhook payloads
 HOW-TO-USE.md      Customer installation, tunnel, alert and one-click guide
 AGENTS.md           Architecture/code map and safe AI-assistant instructions
 CHANGELOG.md        Customer release history

@@ -1,8 +1,16 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MPL-2.0
+// NWOG/NDOG module adapted from "ICT NWOG/NDOG (fadi)" by fadizeidan.
+// That module is subject to the Mozilla Public License 2.0:
+// https://mozilla.org/MPL/2.0/
+// © fadizeidan
 //@version=6
-indicator("IFVG Pro v7", shorttitle="IFVG Pro v7", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+indicator("IFVG Pro v8", shorttitle="IFVG Pro v8", overlay=true, max_bars_back=5000, max_boxes_count=500, max_labels_count=500, max_lines_count=500, dynamic_requests=true)
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KAIROS — comprehensive v7 signal, visual and execution indicator.
+// KAIROS — comprehensive v8 signal, visual and execution indicator.
 //
 // Detects Inversion Fair Value Gaps on the STRICT trigger: candle-3 confirmation
 // (a new opposite FVG) + overlap with the old FVG + a liquidity sweep, with an
@@ -95,6 +103,84 @@ msgBear = input.string("", "Custom Bearish Message", group=grp_alert, tooltip="O
 grp_liq = "Pivot Sweeps"
 showLiquidity  = input.bool(false, "Show Pivot Sweeps", group=grp_liq)
 liqSensitivity = input.string("Low (3)", "Sensitivity", options=["Low (3)", "Medium (5)", "High (15)", "Max (100)"], group=grp_liq)
+
+// --- OPEN GAPS: NWOG ---
+grp_og_nwog = "Open Gaps — New Week (NWOG)"
+ogNwogShow         = input.bool(true, "NWOG", group=grp_og_nwog, inline="nw1")
+ogNwogColorNew     = input.color(color.new(color.purple, 0), "Current", group=grp_og_nwog, inline="nw1")
+ogNwogColor        = input.color(color.new(color.black, 0), "Historical", group=grp_og_nwog, inline="nw1")
+ogNwogStyle        = input.string("⎯⎯⎯", "Boundary Style", options=["⎯⎯⎯", "----", "····"], group=grp_og_nwog, inline="nw2")
+ogNwogSize         = input.int(1, "Width", options=[1, 2, 3, 4], group=grp_og_nwog, inline="nw2")
+ogNwogCeColorNew   = input.color(color.new(color.purple, 0), "Current CE", group=grp_og_nwog, inline="nw3")
+ogNwogCeColor      = input.color(color.new(color.black, 0), "Historical CE", group=grp_og_nwog, inline="nw3")
+ogNwogCeStyle      = input.string("····", "CE Style", options=["⎯⎯⎯", "----", "····"], group=grp_og_nwog, inline="nw4")
+ogNwogCeSize       = input.int(1, "CE Width", options=[1, 2, 3, 4], group=grp_og_nwog, inline="nw4")
+ogNwogEhShow       = input.bool(true, "Event Horizon", group=grp_og_nwog, inline="nw5")
+ogNwogEhColor      = input.color(color.new(color.purple, 20), "Color", group=grp_og_nwog, inline="nw5")
+ogNwogEhStyle      = input.string("----", "Event Horizon Style", options=["⎯⎯⎯", "----", "····"], group=grp_og_nwog, inline="nw6")
+ogNwogEhSize       = input.int(1, "Width", options=[1, 2, 3, 4], group=grp_og_nwog, inline="nw6")
+ogNwogUseBg        = input.bool(true, "Background", group=grp_og_nwog, inline="nw7")
+ogNwogBgNew        = input.color(color.new(color.purple, 95), "Current", group=grp_og_nwog, inline="nw7")
+ogNwogBg           = input.color(color.new(color.black, 95), "Historical", group=grp_og_nwog, inline="nw7")
+ogNwogLabelShow    = input.bool(true, "Labels", group=grp_og_nwog, inline="nw8")
+ogNwogLabelColor   = input.color(color.black, "Text", group=grp_og_nwog, inline="nw8")
+ogNwogLabelBg      = input.color(color.new(color.orange, 100), "Background", group=grp_og_nwog, inline="nw8")
+ogNwogLabelSize    = input.string(size.small, "Label Size", options=[size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group=grp_og_nwog)
+ogNwogMax          = input.int(5, "Maximum Number", minval=1, maxval=50, group=grp_og_nwog)
+ogNwogExtend       = input.string("Always", "Extend Gaps", options=["Always", "Above and below only", "Any that is near current price"], group=grp_og_nwog)
+
+// --- OPEN GAPS: NDOG ETH ---
+grp_og_eth = "Open Gaps — New Day ETH (NDOG)"
+ogEthShow         = input.bool(true, "NDOG ETH", group=grp_og_eth, inline="eth1")
+ogEthColorNew     = input.color(color.new(color.green, 0), "Current", group=grp_og_eth, inline="eth1")
+ogEthColor        = input.color(color.new(color.blue, 0), "Historical", group=grp_og_eth, inline="eth1")
+ogEthStyle        = input.string("⎯⎯⎯", "Boundary Style", options=["⎯⎯⎯", "----", "····"], group=grp_og_eth, inline="eth2")
+ogEthSize         = input.int(1, "Width", options=[1, 2, 3, 4], group=grp_og_eth, inline="eth2")
+ogEthCeColorNew   = input.color(color.new(color.green, 0), "Current CE", group=grp_og_eth, inline="eth3")
+ogEthCeColor      = input.color(color.new(color.blue, 0), "Historical CE", group=grp_og_eth, inline="eth3")
+ogEthCeStyle      = input.string("····", "CE Style", options=["⎯⎯⎯", "----", "····"], group=grp_og_eth, inline="eth4")
+ogEthCeSize       = input.int(1, "CE Width", options=[1, 2, 3, 4], group=grp_og_eth, inline="eth4")
+ogEthUseBg        = input.bool(true, "Background", group=grp_og_eth, inline="eth5")
+ogEthBgNew        = input.color(color.new(color.green, 95), "Current", group=grp_og_eth, inline="eth5")
+ogEthBg           = input.color(color.new(color.blue, 95), "Historical", group=grp_og_eth, inline="eth5")
+ogEthLabelShow    = input.bool(true, "Labels", group=grp_og_eth, inline="eth6")
+ogEthLabelColor   = input.color(color.black, "Text", group=grp_og_eth, inline="eth6")
+ogEthLabelBg      = input.color(color.new(color.orange, 100), "Background", group=grp_og_eth, inline="eth6")
+ogEthLabelSize    = input.string(size.small, "Label Size", options=[size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group=grp_og_eth)
+ogEthMax          = input.int(5, "Maximum Number", minval=1, maxval=50, group=grp_og_eth)
+ogEthExtend       = input.string("Always", "Extend Gaps", options=["Always", "Above and below only", "Any that is near current price"], group=grp_og_eth)
+
+// --- OPEN GAPS: NDOG RTH ---
+grp_og_rth = "Open Gaps — New Day RTH (NDOG)"
+ogRthShow         = input.bool(true, "NDOG RTH", group=grp_og_rth, inline="rth1")
+ogRthColorNew     = input.color(color.new(color.orange, 0), "Current", group=grp_og_rth, inline="rth1")
+ogRthColor        = input.color(color.new(color.red, 0), "Historical", group=grp_og_rth, inline="rth1")
+ogRthStyle        = input.string("⎯⎯⎯", "Boundary Style", options=["⎯⎯⎯", "----", "····"], group=grp_og_rth, inline="rth2")
+ogRthSize         = input.int(1, "Width", options=[1, 2, 3, 4], group=grp_og_rth, inline="rth2")
+ogRthCeColorNew   = input.color(color.new(color.orange, 0), "Current CE", group=grp_og_rth, inline="rth3")
+ogRthCeColor      = input.color(color.new(color.red, 0), "Historical CE", group=grp_og_rth, inline="rth3")
+ogRthCeStyle      = input.string("····", "CE Style", options=["⎯⎯⎯", "----", "····"], group=grp_og_rth, inline="rth4")
+ogRthCeSize       = input.int(1, "CE Width", options=[1, 2, 3, 4], group=grp_og_rth, inline="rth4")
+ogRthUseBg        = input.bool(true, "Background", group=grp_og_rth, inline="rth5")
+ogRthBgNew        = input.color(color.new(color.orange, 95), "Current", group=grp_og_rth, inline="rth5")
+ogRthBg           = input.color(color.new(color.red, 95), "Historical", group=grp_og_rth, inline="rth5")
+ogRthLabelShow    = input.bool(true, "Labels", group=grp_og_rth, inline="rth6")
+ogRthLabelColor   = input.color(color.black, "Text", group=grp_og_rth, inline="rth6")
+ogRthLabelBg      = input.color(color.new(color.orange, 100), "Background", group=grp_og_rth, inline="rth6")
+ogRthLabelSize    = input.string(size.small, "Label Size", options=[size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group=grp_og_rth)
+ogRthMax          = input.int(5, "Maximum Number", minval=1, maxval=50, group=grp_og_rth)
+ogRthExtend       = input.string("Always", "Extend Gaps", options=["Always", "Above and below only", "Any that is near current price"], group=grp_og_rth)
+ogRthTzChoice     = input.string("New York (ET)", "Reference Timezone", options=["Chart / Exchange time", "New York (ET)", "Chicago (CT)", "London (GMT/BST)", "Frankfurt (CET)", "Dubai (GST)", "Mumbai (IST)", "Singapore (SGT)", "Hong Kong (HKT)", "Tokyo (JST)", "Sydney (AET)", "UTC"], group=grp_og_rth)
+ogRthCloseHour    = input.int(16, "Close Hour", minval=0, maxval=23, group=grp_og_rth, inline="rth7")
+ogRthCloseMinute  = input.int(14, "Minute", minval=0, maxval=59, group=grp_og_rth, inline="rth7")
+ogRthOpenHour     = input.int(18, "Open Hour", minval=0, maxval=23, group=grp_og_rth, inline="rth8")
+ogRthOpenMinute   = input.int(0, "Minute", minval=0, maxval=59, group=grp_og_rth, inline="rth8")
+
+// --- OPEN GAPS: ADVANCED ---
+grp_og_adv = "Open Gaps — Advanced"
+ogDistance = input.int(200, "Number of candles to use in calculation", minval=1, group=grp_og_adv)
+ogFactor   = input.float(20, "Factor multiplier for distance test", minval=0, group=grp_og_adv)
+ogBuffer   = input.int(10, "Buffer — Number of candles to extend by", minval=0, group=grp_og_adv) + 1
 
 // -----------------------------------------------------------------------------
 // --- 2. CONFIG & TYPES ---
@@ -851,3 +937,369 @@ if showBias and barstate.islast
     f_biasCell(3, "1H", bias1h)
     f_biasCell(4, "4H", bias4h)
     f_biasCell(5, "12H", bias12h)
+
+// -----------------------------------------------------------------------------
+// --- 9. NATIVE OPEN GAPS (NWOG / NDOG ETH / NDOG RTH) ---
+// -----------------------------------------------------------------------------
+// Visual-only module. Nothing in this section writes to the IFVG signal state,
+// execution levels, A+ qualification, alert mode or webhook payload.
+
+type OgSettings
+    bool   show
+    color  colorCurrent
+    color  colorHistorical
+    int    boundaryWidth
+    string boundaryStyle
+    color  ceColorCurrent
+    color  ceColorHistorical
+    int    ceWidth
+    string ceStyle
+    string extendMode
+    bool   eventHorizonShow
+    color  eventHorizonColor
+    string eventHorizonStyle
+    int    eventHorizonWidth
+    int    maxCount
+    bool   useBackground
+    color  backgroundCurrent
+    color  backgroundHistorical
+    bool   labelShow
+    string labelSize
+    color  labelColor
+    color  labelBackground
+
+type OgDrawing
+    box   area
+    line  ce
+    label topLabel
+    label bottomLabel
+
+type OgGap
+    string    name
+    string    dateName
+    float     priceA
+    float     priceB
+    float     middle
+    int       startTime
+    OgDrawing drawing
+    bool      isCurrent = false
+    bool      isSunday = false
+
+type OgFamily
+    array<OgGap> gaps
+    OgSettings  settings
+    line        eventHorizon = na
+
+f_ogLineStyle(string styleText) =>
+    switch styleText
+        "⎯⎯⎯" => line.style_solid
+        "----" => line.style_dashed
+        "····" => line.style_dotted
+        => line.style_solid
+
+f_ogTimezone(string choice) =>
+    switch choice
+        "Chart / Exchange time" => syminfo.timezone
+        "New York (ET)"         => "America/New_York"
+        "Chicago (CT)"          => "America/Chicago"
+        "London (GMT/BST)"      => "Europe/London"
+        "Frankfurt (CET)"       => "Europe/Berlin"
+        "Dubai (GST)"           => "Asia/Dubai"
+        "Mumbai (IST)"          => "Asia/Kolkata"
+        "Singapore (SGT)"       => "Asia/Singapore"
+        "Hong Kong (HKT)"       => "Asia/Hong_Kong"
+        "Tokyo (JST)"           => "Asia/Tokyo"
+        "Sydney (AET)"          => "Australia/Sydney"
+        "UTC"                   => "UTC"
+        => "America/New_York"
+
+method ogReset(OgGap gap) =>
+    if not na(gap.drawing)
+        box.delete(gap.drawing.area)
+        line.delete(gap.drawing.ce)
+        label.delete(gap.drawing.topLabel)
+        label.delete(gap.drawing.bottomLabel)
+        gap.drawing := na
+    gap
+
+method ogAbovePrice(array<OgGap> gaps, float price) =>
+    float nearestDistance = na
+    OgGap nearest = na
+    int gapCount = array.size(gaps)
+    if gapCount > 0
+        for i = gapCount - 1 to 0
+            OgGap gap = array.get(gaps, i)
+            float mark = math.max(gap.priceA, gap.priceB)
+            if price < mark
+                float candidateDistance = math.abs(mark - price)
+                if na(nearestDistance) or candidateDistance <= nearestDistance
+                    nearestDistance := candidateDistance
+                    nearest := gap
+    nearest
+
+method ogBelowPrice(array<OgGap> gaps, float price) =>
+    float nearestDistance = na
+    OgGap nearest = na
+    int gapCount = array.size(gaps)
+    if gapCount > 0
+        for i = 0 to gapCount - 1
+            OgGap gap = array.get(gaps, i)
+            float mark = math.min(gap.priceA, gap.priceB)
+            if price > mark
+                float candidateDistance = math.abs(price - mark)
+                if na(nearestDistance) or candidateDistance <= nearestDistance
+                    nearestDistance := candidateDistance
+                    nearest := gap
+    nearest
+
+method ogRender(OgGap gap, OgSettings settings, int rightTime, float labelSpacing, bool nwogVisible) =>
+    bool suppressSundayNdog = str.contains(gap.name, "NDOG") and gap.isSunday and nwogVisible
+    if suppressSundayNdog
+        gap.ogReset()
+    else
+        float gapTop = math.max(gap.priceA, gap.priceB)
+        float gapBottom = math.min(gap.priceA, gap.priceB)
+        color boundaryColor = gap.isCurrent ? settings.colorCurrent : settings.colorHistorical
+        color ceColor = gap.isCurrent ? settings.ceColorCurrent : settings.ceColorHistorical
+        color backgroundColor = settings.useBackground ? (gap.isCurrent ? settings.backgroundCurrent : settings.backgroundHistorical) : na
+
+        if na(gap.drawing)
+            gap.drawing := OgDrawing.new()
+            // A box supplies both boundaries and the optional fill with one object,
+            // leaving line capacity for KAIROS's IFVG/session drawings.
+            gap.drawing.area := box.new(left=gap.startTime, top=gapTop, right=rightTime, bottom=gapBottom, xloc=xloc.bar_time, border_color=boundaryColor, border_width=settings.boundaryWidth, border_style=f_ogLineStyle(settings.boundaryStyle), bgcolor=backgroundColor)
+            gap.drawing.ce := line.new(gap.startTime, gap.middle, rightTime, gap.middle, xloc=xloc.bar_time, color=ceColor, width=settings.ceWidth, style=f_ogLineStyle(settings.ceStyle))
+        else
+            box.set_left(gap.drawing.area, gap.startTime)
+            box.set_right(gap.drawing.area, rightTime)
+            box.set_top(gap.drawing.area, gapTop)
+            box.set_bottom(gap.drawing.area, gapBottom)
+            box.set_border_color(gap.drawing.area, boundaryColor)
+            box.set_border_width(gap.drawing.area, settings.boundaryWidth)
+            box.set_border_style(gap.drawing.area, f_ogLineStyle(settings.boundaryStyle))
+            box.set_bgcolor(gap.drawing.area, backgroundColor)
+            line.set_xy1(gap.drawing.ce, gap.startTime, gap.middle)
+            line.set_xy2(gap.drawing.ce, rightTime, gap.middle)
+            line.set_color(gap.drawing.ce, ceColor)
+            line.set_width(gap.drawing.ce, settings.ceWidth)
+            line.set_style(gap.drawing.ce, f_ogLineStyle(settings.ceStyle))
+
+        if settings.labelShow
+            bool splitLabels = not na(labelSpacing) and math.abs(gap.priceA - gap.priceB) >= labelSpacing
+            string topText = splitLabels ? str.format("{1} high -{0}", gap.dateName, gap.name) : str.format("{1} -{0}", gap.dateName, gap.name)
+            float topY = splitLabels ? gapTop : gap.middle
+            if na(gap.drawing.topLabel)
+                gap.drawing.topLabel := label.new(rightTime, topY, topText, xloc=xloc.bar_time, style=label.style_label_left, size=settings.labelSize, color=settings.labelBackground, textcolor=settings.labelColor)
+            else
+                label.set_x(gap.drawing.topLabel, rightTime)
+                label.set_y(gap.drawing.topLabel, topY)
+                label.set_text(gap.drawing.topLabel, topText)
+                label.set_size(gap.drawing.topLabel, settings.labelSize)
+                label.set_color(gap.drawing.topLabel, settings.labelBackground)
+                label.set_textcolor(gap.drawing.topLabel, settings.labelColor)
+
+            if splitLabels
+                string bottomText = str.format("{1} low -{0}", gap.dateName, gap.name)
+                if na(gap.drawing.bottomLabel)
+                    gap.drawing.bottomLabel := label.new(rightTime, gapBottom, bottomText, xloc=xloc.bar_time, style=label.style_label_left, size=settings.labelSize, color=settings.labelBackground, textcolor=settings.labelColor)
+                else
+                    label.set_x(gap.drawing.bottomLabel, rightTime)
+                    label.set_y(gap.drawing.bottomLabel, gapBottom)
+                    label.set_text(gap.drawing.bottomLabel, bottomText)
+                    label.set_size(gap.drawing.bottomLabel, settings.labelSize)
+                    label.set_color(gap.drawing.bottomLabel, settings.labelBackground)
+                    label.set_textcolor(gap.drawing.bottomLabel, settings.labelColor)
+            else
+                label.delete(gap.drawing.bottomLabel)
+                gap.drawing.bottomLabel := na
+        else
+            label.delete(gap.drawing.topLabel)
+            label.delete(gap.drawing.bottomLabel)
+            gap.drawing.topLabel := na
+            gap.drawing.bottomLabel := na
+    gap
+
+method ogAdd(OgFamily family, string name, float priceA, float priceB, int startTime, int dateTime, bool isSunday) =>
+    OgGap gap = OgGap.new()
+    gap.name := name
+    gap.dateName := str.format("{0, date, MMM, d yyyy}", dateTime)
+    gap.priceA := priceA
+    gap.priceB := priceB
+    gap.middle := (priceA + priceB) / 2
+    gap.startTime := startTime
+    gap.isSunday := isSunday
+    array.unshift(family.gaps, gap)
+
+    if array.size(family.gaps) > family.settings.maxCount
+        OgGap removed = array.pop(family.gaps)
+        removed.ogReset()
+    family
+
+method ogHide(OgFamily family) =>
+    int gapCount = array.size(family.gaps)
+    if gapCount > 0
+        for i = 0 to gapCount - 1
+            OgGap gap = array.get(family.gaps, i)
+            gap.ogReset()
+    line.delete(family.eventHorizon)
+    family.eventHorizon := na
+    family
+
+method ogRedraw(OgFamily family, int rightTime, float distanceThreshold, float labelSpacing, bool nwogVisible) =>
+    int gapCount = array.size(family.gaps)
+    if gapCount > 0
+        for i = 0 to gapCount - 1
+            OgGap gap = array.get(family.gaps, i)
+            gap.isCurrent := i == 0
+            switch family.settings.extendMode
+                "Always" =>
+                    gap.ogRender(family.settings, rightTime, labelSpacing, nwogVisible)
+                "Above and below only" =>
+                    gap.ogReset()
+                "Any that is near current price" =>
+                    float aboveDistance = math.min(gap.priceA, gap.priceB) - high
+                    float belowDistance = low - math.max(gap.priceA, gap.priceB)
+                    bool nearby = (aboveDistance > 0 and aboveDistance < distanceThreshold) or (belowDistance > 0 and belowDistance < distanceThreshold)
+                    if nearby
+                        gap.ogRender(family.settings, rightTime, labelSpacing, nwogVisible)
+                    else
+                        gap.ogReset()
+
+        OgGap gapAbove = family.gaps.ogAbovePrice(close)
+        OgGap gapBelow = family.gaps.ogBelowPrice(close)
+
+        if family.settings.extendMode == "Above and below only"
+            if not na(gapAbove)
+                gapAbove.ogRender(family.settings, rightTime, labelSpacing, nwogVisible)
+            if not na(gapBelow)
+                gapBelow.ogRender(family.settings, rightTime, labelSpacing, nwogVisible)
+
+        if family.settings.eventHorizonShow and not na(gapAbove) and not na(gapBelow) and math.min(gapAbove.priceA, gapAbove.priceB) > math.max(gapBelow.priceA, gapBelow.priceB)
+            float horizon = (math.min(gapAbove.priceA, gapAbove.priceB) + math.max(gapBelow.priceA, gapBelow.priceB)) / 2
+            int horizonStart = math.max(gapAbove.startTime, gapBelow.startTime)
+            if na(family.eventHorizon)
+                family.eventHorizon := line.new(horizonStart, horizon, rightTime, horizon, xloc=xloc.bar_time, color=family.settings.eventHorizonColor, width=family.settings.eventHorizonWidth, style=f_ogLineStyle(family.settings.eventHorizonStyle))
+            else
+                line.set_xy1(family.eventHorizon, horizonStart, horizon)
+                line.set_xy2(family.eventHorizon, rightTime, horizon)
+                line.set_color(family.eventHorizon, family.settings.eventHorizonColor)
+                line.set_width(family.eventHorizon, family.settings.eventHorizonWidth)
+                line.set_style(family.eventHorizon, f_ogLineStyle(family.settings.eventHorizonStyle))
+        else
+            line.delete(family.eventHorizon)
+            family.eventHorizon := na
+    else
+        line.delete(family.eventHorizon)
+        family.eventHorizon := na
+    family
+
+f_ogCloseAtTime(string timezone, int targetHour, int targetMinute) =>
+    float foundPrice = na
+    int foundTime = 0
+    if timeframe.isseconds
+        [matched, candidatePrice, candidateTime] = request.security(syminfo.tickerid, "1", [hour(time[1], timezone) == targetHour and minute(time[1], timezone) == targetMinute, close[1], time[1]], lookahead=barmerge.lookahead_on)
+        if matched
+            foundPrice := candidatePrice
+            foundTime := candidateTime
+    else
+        [matches, prices, times] = request.security_lower_tf(syminfo.tickerid, "1", [hour(time[1], timezone) == targetHour and minute(time[1], timezone) == targetMinute, close[1], time[1]])
+        int foundIndex = na
+        if array.size(matches) > 0
+            for i = 0 to array.size(matches) - 1
+                if array.get(matches, i)
+                    foundIndex := i
+                    break
+        if not na(foundIndex) and foundIndex < array.size(prices) and foundIndex < array.size(times)
+            foundPrice := array.get(prices, foundIndex)
+            foundTime := array.get(times, foundIndex)
+    [foundPrice, foundTime]
+
+f_ogOpenAtTime(string timezone, int targetHour, int targetMinute) =>
+    float foundPrice = na
+    int foundTime = 0
+    if timeframe.isseconds
+        if ta.change(time("1")) != 0
+            [matched, candidatePrice, candidateTime] = request.security(syminfo.tickerid, "1", [hour(time[1], timezone) == targetHour and minute(time[1], timezone) == targetMinute, open[1], time[1]], lookahead=barmerge.lookahead_on)
+            if matched
+                foundPrice := candidatePrice
+                foundTime := candidateTime
+    else
+        [matches, prices, times] = request.security_lower_tf(syminfo.tickerid, "1", [hour(time[1], timezone) == targetHour and minute(time[1], timezone) == targetMinute, open[1], time[1]])
+        int foundIndex = na
+        if array.size(matches) > 0
+            for i = 0 to array.size(matches) - 1
+                if array.get(matches, i)
+                    foundIndex := i
+                    break
+        if not na(foundIndex) and foundIndex < array.size(prices) and foundIndex < array.size(times)
+            foundPrice := array.get(prices, foundIndex)
+            foundTime := array.get(times, foundIndex)
+    [foundPrice, foundTime]
+
+var array<OgGap> ogNwogGaps = array.new<OgGap>()
+var array<OgGap> ogEthGaps = array.new<OgGap>()
+var array<OgGap> ogRthGaps = array.new<OgGap>()
+var OgFamily ogNWOG = OgFamily.new()
+var OgFamily ogETH = OgFamily.new()
+var OgFamily ogRTH = OgFamily.new()
+
+ogNWOG.gaps := ogNwogGaps
+ogNWOG.settings := OgSettings.new(ogNwogShow, ogNwogColorNew, ogNwogColor, ogNwogSize, ogNwogStyle, ogNwogCeColorNew, ogNwogCeColor, ogNwogCeSize, ogNwogCeStyle, ogNwogExtend, ogNwogEhShow, ogNwogEhColor, ogNwogEhStyle, ogNwogEhSize, ogNwogMax, ogNwogUseBg, ogNwogBgNew, ogNwogBg, ogNwogLabelShow, ogNwogLabelSize, ogNwogLabelColor, ogNwogLabelBg)
+ogETH.gaps := ogEthGaps
+ogETH.settings := OgSettings.new(ogEthShow, ogEthColorNew, ogEthColor, ogEthSize, ogEthStyle, ogEthCeColorNew, ogEthCeColor, ogEthCeSize, ogEthCeStyle, ogEthExtend, false, color.gray, "----", 1, ogEthMax, ogEthUseBg, ogEthBgNew, ogEthBg, ogEthLabelShow, ogEthLabelSize, ogEthLabelColor, ogEthLabelBg)
+ogRTH.gaps := ogRthGaps
+ogRTH.settings := OgSettings.new(ogRthShow, ogRthColorNew, ogRthColor, ogRthSize, ogRthStyle, ogRthCeColorNew, ogRthCeColor, ogRthCeSize, ogRthCeStyle, ogRthExtend, false, color.gray, "----", 1, ogRthMax, ogRthUseBg, ogRthBgNew, ogRthBg, ogRthLabelShow, ogRthLabelSize, ogRthLabelColor, ogRthLabelBg)
+
+float ogDistanceThreshold = ta.atr(ogDistance) + ta.stdev(high - low, ogDistance) * ogFactor
+int ogBarDuration = nz(time - time[1], 60000)
+int ogRightTime = time + ogBarDuration * ogBuffer
+var array<float> ogRanges = array.new<float>()
+array.unshift(ogRanges, high - low)
+if array.size(ogRanges) > 500
+    array.pop(ogRanges)
+float ogMedianRange = array.median(ogRanges)
+float ogLabelSpacing = ta.sma(ta.sma(ogMedianRange, 500), 500) * 0.5
+string ogRthTimezone = f_ogTimezone(ogRthTzChoice)
+
+if barstate.isconfirmed
+    if timeframe.isintraday
+        bool ogIsSunday = dayofweek == dayofweek.sunday
+
+        if ogNWOG.settings.show
+            if not ogIsSunday[1] and ogIsSunday
+                ogNWOG.ogAdd("NWOG", open, close[1], time[1], time, true)
+            ogNWOG.ogRedraw(ogRightTime, ogDistanceThreshold, ogLabelSpacing, ogNWOG.settings.show)
+        else
+            ogNWOG.ogHide()
+
+        if ogETH.settings.show
+            bool ogIsNewDay = ta.change(time("1D")) != 0
+            if ogIsNewDay and open != close[1]
+                ogETH.ogAdd("NDOG ETH", open, close[1], time[1], time, ogIsSunday)
+            ogETH.ogRedraw(ogRightTime, ogDistanceThreshold, ogLabelSpacing, ogNWOG.settings.show)
+        else
+            ogETH.ogHide()
+
+        var float ogRthClosed = na
+        var int ogRthClosedTime = 0
+        if ogRTH.settings.show
+            if na(ogRthClosed)
+                [candidateClose, candidateCloseTime] = f_ogCloseAtTime(ogRthTimezone, ogRthCloseHour, ogRthCloseMinute)
+                if not na(candidateClose)
+                    ogRthClosed := candidateClose
+                    ogRthClosedTime := candidateCloseTime
+
+            [candidateOpen, candidateOpenTime] = f_ogOpenAtTime(ogRthTimezone, ogRthOpenHour, ogRthOpenMinute)
+            if not na(ogRthClosed) and not na(candidateOpen)
+                ogRTH.ogAdd("NDOG RTH", ogRthClosed, candidateOpen, candidateOpenTime, ogRthClosedTime, ogIsSunday)
+                ogRthClosed := na
+                ogRthClosedTime := 0
+            ogRTH.ogRedraw(ogRightTime, ogDistanceThreshold, ogLabelSpacing, ogNWOG.settings.show)
+        else
+            ogRTH.ogHide()
+            ogRthClosed := na
+            ogRthClosedTime := 0
+    else
+        ogNWOG.ogHide()
+        ogETH.ogHide()
+        ogRTH.ogHide()

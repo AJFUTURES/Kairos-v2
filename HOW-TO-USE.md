@@ -14,7 +14,7 @@ setup once; afterward, KAIROS can be launched by double-clicking a local
 
 The customer must complete these once:
 
-1. Receive/accept access to the private GitHub repository and download KAIROS.
+1. Download KAIROS from the public GitHub release or the verified Discord post.
 2. Install Python 3.10 or newer.
 3. Obtain ProjectX/TopstepX API access and add personal keys to `.env`.
 4. Create a stable Cloudflare Tunnel URL for TradingView.
@@ -25,20 +25,20 @@ Afterward, daily launch is one double-click on `KAIROS.command`. It calls
 `start.sh`, which validates setup, starts the configured tunnel if necessary,
 and starts the bot.
 
-## Repository owner checklist before inviting a customer
+## Repository owner checklist before publishing an update
 
 The code package can be shared only after the owner completes these release actions:
 
-- Decide and add the intended software license/customer-use terms. With no `LICENSE`
-  file, the repository does not grant customers clear redistribution/modification rights.
+- Preserve the MPL 2.0 notice and author attribution in `alertbot.pine` for the
+  adapted NWOG/NDOG module.
 - Decide whether to retain the current clean-state trading defaults: the bot starts
   unpaused with MNQ enabled and Custom sizing (5 MNQ contracts). The guide prevents
   alerts until dashboard review, but a more conservative paused/50K default is an
   owner product decision.
 - Compile the exact committed `alertbot.pine` in TradingView and recreate its alert.
 - Complete the Practice-account acceptance test in this guide on a personal Mac.
-- Keep the GitHub repository private, then invite the customer's exact GitHub account;
-  never send a ZIP containing the owner's `.env`, state, logs or tunnel credentials.
+- Publish only a sanitized archive; never send a ZIP containing the owner's `.env`,
+  state, logs or tunnel credentials.
 - Decide whether to create a version tag/GitHub Release for an immutable customer build.
 - If the optional `site/` landing page is included in the offering, replace its example
   domain/links for that customer. It is not required to operate the bot.
@@ -50,9 +50,6 @@ its warning is intentional. Topstep order transmission belongs on the customer's
 permitted personal device.
 
 ## 1. Get access and download the files
-
-Because the repository is private, the owner must invite the customer's GitHub
-account. The customer must accept that invitation before the link works.
 
 Recommended method:
 
@@ -246,7 +243,9 @@ Stop the foreground bot with Ctrl+C.
 4. In indicator **Settings → Alerts**, choose **Webhook JSON** or **Both**.
 5. Paste only `WEBHOOK_SECRET` into **Webhook Secret**. Never paste the broker API
    key, ProjectX password, or dashboard token into Pine.
-6. Configure the desired session, IFVG, HTF, visual and risk inputs.
+6. Configure the desired session, IFVG, HTF, visual and risk inputs. The four
+   **Open Gaps** groups control NWOG, NDOG ETH, and NDOG RTH drawings, history,
+   styles, labels, extension behavior, and RTH reference times. They are visual-only.
 
 The source must compile successfully in TradingView. Pine compilation cannot be
 confirmed by the local Python tests.
@@ -259,7 +258,7 @@ ports such as HTTPS/443. Cloudflare supplies that HTTPS endpoint.
 For each chart/instrument:
 
 1. Choose **Create Alert**.
-2. Condition: **IFVG Pro v7 → Any alert() function call**.
+2. Condition: **IFVG Pro v8 → Any alert() function call**.
 3. Frequency: **Once Per Bar Close**, if shown.
 4. Notifications: enable **Webhook URL**.
 5. URL: `https://app.example.com/webhook` using the customer's real hostname.
@@ -317,7 +316,12 @@ Before considering the installation ready:
 - One small Practice trade receives both broker stop and take-profit brackets.
 - For A+, initial candle-1 protection and the confirmed transition to swing H/L are
   visible in the logs and broker orders.
-- Break-even, close-based exit, no-hedge and orphan cleanup are tested only in Practice.
+- Structural phase 2 visibly retains a live broker stop at the candle-1 level until
+  break-even or another confirmed exit changes/closes it.
+- Auto-break-even moves a long stop to average entry plus one tick or a short stop
+  to average entry minus one tick after price reaches 50% of the live TP distance.
+- Failed/unconfirmed flatten, break-even, no-hedge, and orphan cleanup scenarios are
+  tested only in Practice.
 - Restart recovery shows the same broker position and does not create a second order.
 
 The final items involve a real Practice order and must be performed by the customer;
