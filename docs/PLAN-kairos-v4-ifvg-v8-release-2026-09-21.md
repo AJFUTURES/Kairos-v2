@@ -10,8 +10,8 @@
 - Preserve strict candle-3 signals, A+ qualification, sizing, target rules,
   webhook fields, and all unrelated trading behavior.
 - Publish a sanitized KAIROS v4 package and standalone IFVG Pro v8 source.
-- Update customer documentation, licensing, release notes, and the guidebook/video
-  chapter plan.
+- Update customer documentation, licensing, and release notes; keep the
+  guidebook/video chapter plan as an owner-only production aid.
 - Validate locally, compile in TradingView, and use no evaluation, funded, or live
   account for validation.
 
@@ -22,8 +22,8 @@
 - [x] Pine source compiles in TradingView.
 - [x] NWOG/NDOG source, settings, and chart-load parity is reviewed.
 - [x] Sanitized package and checksums are verified.
-- [ ] GitHub release is published.
-- [ ] Discord release post and attachments are verified.
+- [x] GitHub release is published.
+- [x] Discord release post and attachments are verified.
 
 ## Progress
 
@@ -44,10 +44,19 @@
   exposed the full NWOG/NDOG settings surface. Review covered source, controls,
   and successful chart loading; it was not a pixel-by-pixel historical replay.
 - 2026-09-21: Built the sanitized `KAIROS-v4.zip`, standalone
-  `IFVG-Pro-v8.pine`, release notes, guidebook/video chapters, and SHA-256
-  manifest. The ZIP integrity check passes and contains no private runtime files.
+  `IFVG-Pro-v8.pine`, release notes, and SHA-256 manifest. The ZIP integrity
+  check passes and contains no private runtime files or owner-only production
+  notes.
+- 2026-09-22: Published the GitHub release and Discord `@everyone`
+  announcement. Discord message `1551783860738592829` is pinned.
+- 2026-09-22: Removed the owner-only guidebook/video chapter outline from the
+  Discord message, GitHub release assets, tagged source, public ZIP, and public
+  checksum manifest. Replaced the public ZIP and checksum assets with clean
+  versions; the private outline remains only in the owner's local distribution
+  folder.
 
 ## Stop condition
 
-Stop after the GitHub and Discord release artifacts are verified, the guidebook
-chapter plan is delivered, and all remaining manual limitations are recorded.
+Stop after the GitHub and Discord release artifacts are verified, the private
+guidebook chapter plan is delivered directly to the owner, and all remaining
+manual limitations are recorded.
